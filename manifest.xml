@@ -1,0 +1,23 @@
+<package>
+  <description brief="Rock Component for 3D Wheel/Leg Mobile Robots Odometry library">
+  This component computes full odometry caculating relative displacements using
+  a 3D Kinematics model and Least-Squares solver.
+  </description>
+  <author>Javier Hidalgo Carrio/javier.hidalgo_carrio@dfki.de</author>
+  <license></license>
+  <url>http://</url>
+  <logo>http://</logo>
+  <depend package="base/cmake" />
+  <!--
+   To add any dependencies use the depend tag
+  <depend package="dummy-dependency-0" />
+	...
+  <depend package="dummy-dependency-n-1" />
+  <depend package="dummy-dependency-n" />
+  -->
+  <depend package="base/types" />
+  <depend package="base/orogen/types" />
+  <depend package="drivers/orogen/aggregator" />
+  <depend package="slam/threed_odometry" />
+  <tags>stable, localization</tags>
+</package>

@@ -1,0 +1,137 @@
+name "threed_odometry"
+# Optionally declare the version number
+# version "0.1"
+
+# If new data types need to be defined, they have to be put in a separate C++
+# header, and this header will be loaded here
+using_library "threed_odometry" # 3D-Kinematics and motion model solvers
+
+# If the component/deployments use data types that are defined in other oroGen
+# projects, these projects should be imported there as well.
+import_types_from "base" #  IMU/Orientation and Joints samples
+import_types_from "ThreedOdometryTypes.hpp" # Task configuration types
+
+# Declare the Three Odometry class
+# The component computes the robot pose based on
+# a complete motion model.
+# Robot joints positions are needed to compute
+# the forward kinematics of robot chains.
+# Angular and robot joints
+# rates are needed to compute the movement.
+#
+#
+# The corresponding C++ class can be edited in tasks/Task.hpp and
+# tasks/Task.cpp, and will be put in the threed_odometry namespace.
+task_context "Task" do
+
+    #******************************
+    #**** Odometry Properties *****
+    #******************************
+    property('urdf_file', '/std/string').
+        doc "path to the rover urdf file"
+
+    property('wheel_radius', 'std::vector<double>').
+	doc 'Effective wheel radius average only for wheeled robot. The vector size is equivalent to the number of' +
+        'kinematic trees in the robot (read documentation of threed_odometry library). In case of leg robots' +
+        'keep the right vector size but set to zero the effective wheel radius.'
+
+    property('slip_dof', 'int').
+	doc 'Number of DoF per each kinematic three to model the slip vector (read documentation of threed_odometry library).'
+
+    property('contact_dof', 'int').
+	doc 'Number of DoF per each kinematic tree to model the point in contact with the terrain (read documentation of threed_odometry library).'
+
+    property('modelType', 'threed_odometry/ModelType', :NUMERICAL).
+	doc 'Model type to use: ANALYTICAL or NUMERICAL approach.'+
+            'You must write :NUMERICAL in case you are using the Kinematics model from threed_odometry library.'
+
+    property('odometry_source_frame', '/std/string').doc 'Text to define the From Frame for the transformer (accumulated pose or Dead-Reckoning)'
+
+    property('odometry_target_frame', '/std/string').doc 'Text to define the To Frame for the transformer (accumulated pose or Dead-Reckoning)'
+
+    property('delta_odometry_source_frame', '/std/string').doc 'Text to define the From Frame for the transformer (delta pose)'
+
+    property('delta_odometry_target_frame', '/std/string').doc 'Text to define the To Frame for the transformer (delta pose)'
+
+    #******************************
+    #**** Rover Properties ********
+    #******************************
+    property('robot_CoM', 'threed_odometry/CenterOfMassConfiguration').
+        doc 'Configuration values of robot Center of Mass to compute the Center of Gravity. Used for the Weight matrix of the Motion Model.'+
+        'Look in Types for further details.'
+
+    #******************************
+    #*** IIR Filter Properties ****
+    #******************************
+    property('iir_filter', 'threed_odometry/IIRCoefficients').
+        doc 'Configuration values to run the Infinite Impulse Response (IIR). Look in Types for further details.'
+
+    #******************************
+    #*** Orientation Noise Flag ***
+    #******************************
+    property('orientation_samples_noise_on', 'bool').
+        doc 'Set to true if desired orientation noise from orientation_samples input port.'+
+        "Otherwise it uses the motion model Leasts-Squares error to fill the uncertainty."
+
+    #******************************
+    #***   Joints Properties   ****
+    #******************************
+    property('jointsNames', 'std/vector<std/string>').
+	doc 'Required Joint in that order. Searching by names. It makes flexibility to the order values in the input port with the joints.'
+
+    #******************************
+    #******* Input ports  *********
+    #******************************
+    input_port('joints_samples', '/base/samples/Joints').
+        needs_reliable_connection.
+        doc 'timestamped joints samples (active and passive) providing odometry information.'+
+            'They have to provide position and speed. In case they do not originally provide both values'+
+            'Another component should perform this computation.'
+
+    input_port('orientation_samples', '/base/samples/RigidBodyState').
+        needs_reliable_connection.
+        doc 'provides timestamped orientation samples.'
+
+    ####################################################################
+    # INFO AND RECOMMENDATIONS:
+    # All the measurements in this task should be calibrated,
+    # compensated and in the robot body_frame.
+    # world_frame is the zero absolute, tangential to an imaginary plane.
+    # navigation_frame is the zero relative (where threed_odometry starts).
+    # The Odometry tasks assumes zero starting pose at relative
+    # navigation_frame.
+    ####################################################################
+    stream_aligner do
+        align_port("joints_samples", 0.08)
+	align_port("orientation_samples", 0.08)
+        max_latency(1.0)
+    end
+
+    #******************************
+    #******* Output Ports *********
+    #******************************
+    output_port('pose_samples_out', '/base/samples/RigidBodyState').
+	doc 'Estimated robot pose. Position and velocity is computed from statistical Motion Model.'+
+            'Orientation from IMU gyros integration.'
+
+    output_port('delta_pose_samples_out', '/base/samples/RigidBodyState').
+	doc 'Delta estimated robot pose (from body_frame k-1). Position and velocity is computed from statistical Motion Model.'+
+            'Orientation from IMU gyros integration.'
+
+    #************************************
+    #******* Output Debug Ports *********
+    #************************************
+    property('output_debug', 'bool', false).
+	doc 'Set to true in case you want to have the output ports bellow.'
+
+    output_port('fkchains_rbs_out', 'threed_odometry/RobotContactPointsRbs').
+        doc 'Rigid Body States with the position and orientation of Contact points frame'+
+            'of the robot with respect to the body frame.'
+
+    output_port('weighting_vector', 'base::VectorXd').
+        doc 'Weighing vector of the Static force (could be used for support polygon).'
+
+    port_driven
+
+end
+
