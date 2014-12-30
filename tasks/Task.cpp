@@ -72,11 +72,6 @@ void Task::joints_samplesCallback(const base::Time &ts, const ::base::samples::J
         else
             jointPositions[jointIdx] = 0.00;
 
-        /* TO-DO */
-        /** Set to zero in case of a driving wheel **/
-        if((*it).find("drive") != std::string::npos)
-            jointPositions[jointIdx] = 0.00;
-
         /** Avoid NaN values in velocity **/
         if (std::isfinite(state.speed))
             jointVelocities[jointIdx] = state.speed;
@@ -187,24 +182,6 @@ bool Task::configureHook()
 
     this->slip_dof = _slip_dof.value();
     this->contact_dof = _contact_dof.value();
-    /*i = 0;
-    this->slip_dof.resize(_slip_dof.value().size());
-    for (std::vector<double>::iterator it = _slip_dof.value().begin();
-            it != _slip_dof.value().end(); ++it)
-    {
-        this->slip_dof[i] = *it;
-        i++;
-    }
-
-    i = 0;
-    this->contact_dof.resize(_contact_dof.value().size());
-    for (std::vector<double>::iterator it = _contact_dof.value().begin();
-            it != _contact_dof.value().end(); ++it)
-    {
-        this->contact_dof[i] = *it;
-        i++;
-    }*/
-
 
     /** Info with regard to the Dynamic Weighting Matrix **/
     if (centerOfMass.dynamicOn)
