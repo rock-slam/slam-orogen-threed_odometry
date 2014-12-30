@@ -139,18 +139,20 @@ ctrl_gui.connect(SIGNAL('sendSignal()')) do
         port_attitude.write(orientation_rbs) do |result|
             puts "Sent orientation to task #{task.name}"
         end
-        #Access to the chains sub_ports
-        vector_rbs = task.port('fkchains_rbs_out')
-        vector_rbs.wait
-
-        Vizkit.display vector_rbs.sub_port([:rbsChain, 0]), :widget => c0FL
-        Vizkit.display vector_rbs.sub_port([:rbsChain, 1]), :widget => c0FR
-        Vizkit.display vector_rbs.sub_port([:rbsChain, 2]), :widget => c0ML
-        Vizkit.display vector_rbs.sub_port([:rbsChain, 3]), :widget => c0MR
-        Vizkit.display vector_rbs.sub_port([:rbsChain, 4]), :widget => c0RL
-        Vizkit.display vector_rbs.sub_port([:rbsChain, 5]), :widget => c0RR
-
     end
+end
+
+task.on_reachable do
+    #Access to the chains sub_ports
+    vector_rbs = task.port('fkchains_rbs_out')
+    vector_rbs.wait
+
+    Vizkit.display vector_rbs.sub_port([:rbsChain, 0]), :widget => c0FL
+    Vizkit.display vector_rbs.sub_port([:rbsChain, 1]), :widget => c0FR
+    Vizkit.display vector_rbs.sub_port([:rbsChain, 2]), :widget => c0ML
+    Vizkit.display vector_rbs.sub_port([:rbsChain, 3]), :widget => c0MR
+    Vizkit.display vector_rbs.sub_port([:rbsChain, 4]), :widget => c0RL
+    Vizkit.display vector_rbs.sub_port([:rbsChain, 5]), :widget => c0RR
 end
 
 # disable the GUI until the task is reachable
