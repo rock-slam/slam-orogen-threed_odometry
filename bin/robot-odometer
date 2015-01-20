@@ -2,6 +2,7 @@
 
 require 'orocos'
 require 'orocos/async'
+require 'rock/bundle'
 require 'vizkit'
 require 'optparse'
 
@@ -39,7 +40,8 @@ elsif
     end
 end
 
-Orocos.initialize
+Bundles.initialize
+Bundles.transformer.load_conf(Bundles.find_file('config', 'transforms_scripts.rb'))
 puts "Getting task with name #{task_context_name}"
 task = Orocos::Async.proxy task_context_name
 
@@ -48,8 +50,8 @@ view3d = Vizkit.vizkit3d_widget
 view3d.show
 vis_gui = Vizkit.default_loader.RobotVisualization
 vis_gui.modelFile = model_file.dup
-vis_gui.jointsSize = 0.02
-#view3d.setPluginDataFrame("body", vis_gui )
+vis_gui.setPluginName("Robot")
+view3d.setPluginDataFrame("body", vis_gui )
 
 main = Qt::Widget.new
 layout = Qt::VBoxLayout.new(main)
@@ -60,10 +62,6 @@ override_vel_limits=0
 only_positive=true
 no_effort=true
 no_velocity=false
-ctrl_gui.configureUi(override_vel_limits, only_positive, no_effort, no_velocity)
-ctrl_gui.initFromURDF(model_file.dup)
-layout.add_widget(ctrl_gui)
-main.show
 
 #Contact points FL Wheel (RED)
 c0FL = Vizkit.default_loader.RigidBodyStateVisualization
@@ -123,6 +121,8 @@ orientation_rbs.orientation = Eigen::Quaternion.Identity()
 
 ctrl_gui.configureUi(override_vel_limits, only_positive, no_effort, no_velocity)
 ctrl_gui.initFromURDF(model_file.dup)
+layout.add_widget(ctrl_gui)
+main.show
 ctrl_gui.connect(SIGNAL('sendSignal()')) do
     joint = ctrl_gui.getJoints()
     vis_gui.updateData(joint)
