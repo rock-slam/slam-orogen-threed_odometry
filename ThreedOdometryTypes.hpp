@@ -2,12 +2,17 @@
 #define THREED_ODOMETRY_TYPES_H
 
 #include <vector>
-#include <base/time.h>
-#include <base/eigen.h>
-#include <base/samples/rigid_body_state.h>
+#include <base/Time.hpp>
+#include <base/Eigen.hpp>
+#include <base/NamedVector.hpp>
+#include <base/samples/RigidBodyState.hpp>
 
 namespace threed_odometry
 {
+    class NamedVectord : public ::base::NamedVector<double>
+    {
+    };
+
     enum ModelType
     {
         ANALYTICAL,

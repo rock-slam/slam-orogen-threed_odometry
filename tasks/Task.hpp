@@ -69,7 +69,7 @@ namespace threed_odometry {
 
         std::string urdfFile;
 
-        std::vector<float> wheel_radius;
+        NamedVectord contact_points;
         int slip_dof;
         int contact_dof;
 

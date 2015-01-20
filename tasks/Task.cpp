@@ -84,10 +84,10 @@ void Task::joints_samplesCallback(const base::Time &ts, const ::base::samples::J
 
     /** Fill the rest of jointVelocities (unknown quantities) **/
     Eigen::Matrix<double, Eigen::Dynamic, 1> Ident;
-    Ident.resize(this->wheel_radius.size()*this->slip_dof, 1);
-    jointVelocities.block(robotKinematics->getRobotJointDoF(), 0, this->wheel_radius.size()*this->slip_dof, 1) = Ident * base::NaN<double>();
-    Ident.resize(this->wheel_radius.size()*this->contact_dof, 1);
-    jointVelocities.block(robotKinematics->getRobotJointDoF()+(this->wheel_radius.size()*this->slip_dof), 0, this->wheel_radius.size()*this->contact_dof,1) = Ident * base::NaN<double>();
+    Ident.resize(this->contact_points.size()*this->slip_dof, 1);
+    jointVelocities.block(robotKinematics->getRobotJointDoF(), 0, this->contact_points.size()*this->slip_dof, 1) = Ident * base::NaN<double>();
+    Ident.resize(this->contact_points.size()*this->contact_dof, 1);
+    jointVelocities.block(robotKinematics->getRobotJointDoF()+(this->contact_points.size()*this->slip_dof), 0, this->contact_points.size()*this->contact_dof,1) = Ident * base::NaN<double>();
 
     #ifdef DEBUG_PRINTS
     std::cout<<"[THREED_ODOMETRY JOINT_SAMPLES] Received time-stamp:\n"<<jointsSamples.time.toMicroseconds()<<"\n";
@@ -172,11 +172,19 @@ bool Task::configureHook()
     this->jointsNames = _jointsNames.value();
 
     register size_t i = 0;
-    this->wheel_radius.resize(_wheel_radius.value().size());
-    for (std::vector<double>::iterator it = _wheel_radius.value().begin();
-            it != _wheel_radius.value().end(); ++it)
+    this->contact_points.resize(_contact_points.value().size());
+    for (std::vector<double>::iterator it = _contact_points.value().elements.begin();
+            it != _contact_points.value().elements.end(); ++it)
     {
-        this->wheel_radius[i] = *it;
+        this->contact_points.elements[i] = *it;
+        i++;
+    }
+
+    i = 0;
+    for (std::vector<std::string>::iterator it = _contact_points.value().names.begin();
+            it != _contact_points.value().names.end(); ++it)
+    {
+        this->contact_points.names[i] = *it;
         i++;
     }
 
@@ -202,7 +210,7 @@ bool Task::configureHook()
     if (modelType == NUMERICAL)
     {
         /** Robot Kinematics Model **/
-        robotKinematics.reset(new threed_odometry::KinematicKDL (urdfFile, wheel_radius, slip_dof, contact_dof));
+        robotKinematics.reset(new threed_odometry::KinematicKDL (urdfFile, this->contact_points.names, this->contact_points.elements, slip_dof, contact_dof));
         RTT::log(RTT::Warning)<<"[THREED_ODOMETRY] Numerical Model selected"<<RTT::endlog();
     }
     else if (modelType == ANALYTICAL)
@@ -219,7 +227,7 @@ bool Task::configureHook()
     motionModel = threed_odometry::MotionModel<double>(motionModelStatus, threed_odometry::MotionModel<double>::LOWEST_POINT , robotKinematics);
 
     /** Weighting Matrix Initialization **/
-    WeightMatrix.resize(6*this->wheel_radius.size(), 6*this->wheel_radius.size());
+    WeightMatrix.resize(6*this->contact_points.size(), 6*this->contact_points.size());
     WeightMatrix.setIdentity();
     WeightMatrix =  base::NaN<double>() * WeightMatrix;
 
@@ -348,11 +356,11 @@ WeightingMatrix Task::dynamicWeightMatrix (CenterOfMassConfiguration &centerOfMa
     double theoretical_g = 9.81; /** It is not important to be exactly the real theoretical g at the location **/
 
     /** Set to the identity **/
-    weightLocal.resize(6*this->wheel_radius.size(), 6*this->wheel_radius.size());
+    weightLocal.resize(6*this->contact_points.size(), 6*this->contact_points.size());
     weightLocal.setIdentity();
 
     /** Size the force vector **/
-    forces.resize(this->wheel_radius.size(), 1);
+    forces.resize(this->contact_points.size(), 1);
 
     if (centerOfMass.dynamicOn)
     {
@@ -375,7 +383,7 @@ WeightingMatrix Task::dynamicWeightMatrix (CenterOfMassConfiguration &centerOfMa
         //exoter::BodyState::forceAnalysis(centerOfMass.coordinates, chainPosition, static_cast<Eigen::Quaterniond>(orientation), theoretical_g, forces);
 
         /** Compute the percentages **/
-        for (register int i=0; i<static_cast<int>(this->wheel_radius.size()); ++i)
+        for (register int i=0; i<static_cast<int>(this->contact_points.size()); ++i)
         {
             if (forces[i] > 0.00)
                 centerOfMass.percentage[i] = forces[i] / theoretical_g;
@@ -385,7 +393,7 @@ WeightingMatrix Task::dynamicWeightMatrix (CenterOfMassConfiguration &centerOfMa
     }
 
     /** Form the weighting Matrix (static or dynamic it needs to be created) **/
-    for (register int i=0; i<static_cast<int>(this->wheel_radius.size()); ++i)
+    for (register int i=0; i<static_cast<int>(this->contact_points.size()); ++i)
     {
         weightLocal.block<6,6>(6*i, 6*i) = centerOfMass.percentage[i] * Eigen::Matrix<double, 6, 6>::Identity();
     }
