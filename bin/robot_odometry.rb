@@ -30,7 +30,7 @@ Bundles.run 'threed_odometry::Task' => 'robot_odometry', :gdb => false do
 
     # Set configuration files for odometry
     Orocos.conf.apply(robot_odometry, ['default', 'bessel50'], :override => true)
-    robot_odometry.urdf_file = Bundles.find_file('data/odometry', 'exoter_odometry_model.urdf')
+    robot_odometry.urdf_file = Bundles.find_file('data/odometry', 'exoter_odometry_model_complete.urdf')
 
     ###################
     ## LOG THE PORTS ##
