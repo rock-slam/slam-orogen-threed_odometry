@@ -69,9 +69,14 @@ namespace threed_odometry {
 
         std::string urdfFile;
 
-        NamedVectord contact_points;
-        int slip_dof;
-        int contact_dof;
+        std::vector<std::string> contact_points;
+
+        /** Order of Joints by Name **/
+        std::vector<std::string> joint_names;
+
+        std::vector<std::string> slip_joints;
+
+        std::vector<std::string> contact_joints;
 
         ModelType modelType;
 
@@ -81,12 +86,11 @@ namespace threed_odometry {
         /** IIR filter configuration structure **/
         IIRCoefficients iirConfig;
 
-        /** Order of Joints by Name **/
-        std::vector<std::string> jointsNames;
-
         /******************************************/
         /*** General Internal Storage Variables ***/
         /******************************************/
+
+        int number_robot_joints;
 
         /** Joint, Slip and Contact Angle positions NOTE: The order of the storage needs to be coincident if used as input for the motionModel **/
         Eigen::Matrix< double, Eigen::Dynamic, 1  > jointPositions;
@@ -101,10 +105,16 @@ namespace threed_odometry {
         std::vector< Eigen::Matrix <double, 6, 1> , Eigen::aligned_allocator < Eigen::Matrix <double, 6, 1> > > vectorCartesianVelocities;
 
         /** Robot Kinematic Model **/
-        boost::shared_ptr< threed_odometry::KinematicModel<double> > robotKinematics;
+        boost::shared_ptr< threed_odometry::KinematicKDL > robotKinematics;
 
         /** Robot Motion Model **/
-        threed_odometry::MotionModel<double> motionModel;
+        boost::shared_ptr< threed_odometry::MotionModel<double> > motionModel;
+
+        /**< Forward kinematics of the robot chains */
+        std::vector<Eigen::Affine3d> fkRobotTrans;
+
+        /**< Uncertainty of the forward kinematics (if any) */
+        std::vector<base::Matrix6d> fkRobotCov;
 
         /** Covariance Joints, Slip and Contact Angle velocities NOTE: The order of the storage needs to be coincident if used as input for the motionModel **/
         Eigen::Matrix< double, Eigen::Dynamic, Eigen::Dynamic > modelVelCov;
@@ -219,6 +229,13 @@ namespace threed_odometry {
         /** @brief Performs the odometry update
          */
         void updateOdometry(const double &delta_t);
+
+        /** @brief
+         */
+        void joints_samplesUnpack(Eigen::Matrix< double, Eigen::Dynamic, 1  > &joints_vector,
+                                   const ::base::samples::Joints &original_joints,
+                                   const std::vector<std::string> &order_names);
+
 
         /** \brief Store the variables in the Output ports
          */

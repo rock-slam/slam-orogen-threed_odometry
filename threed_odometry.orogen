@@ -30,17 +30,17 @@ task_context "Task" do
     property('urdf_file', '/std/string').
         doc "path to the rover urdf file"
 
-    property('contact_points', 'threed_odometry/NamedVectord').
+    property('contact_points', 'std/vector<std/string>').
 	doc 'Named Vector with the contact point link name in the URDF file and'+
         'The number values is the effective wheel radius average only for wheeled robot. The vector size is equivalent to the number of' +
         'kinematic trees in the robot (read documentation of threed_odometry library). In case of leg robots' +
         'keep the right vector size but set to zero the effective wheel radius.'
 
-    property('slip_dof', 'int').
-	doc 'Number of DoF per each kinematic three to model the slip vector (read documentation of threed_odometry library).'
+    property('slip_joints', 'std/vector<std/string>').
+	doc 'Joints in the model which are part of the slip vectors.'
 
-    property('contact_dof', 'int').
-	doc 'Number of DoF per each kinematic tree to model the point in contact with the terrain (read documentation of threed_odometry library for further info).'
+    property('contact_joints', 'std/vector<std/string>').
+	doc 'Joints in the model which are part of the contact vectors.'
 
     property('modelType', 'threed_odometry/ModelType', :NUMERICAL).
 	doc 'Model type to use: ANALYTICAL or NUMERICAL approach.'+
@@ -77,8 +77,8 @@ task_context "Task" do
     #******************************
     #***   Joints Properties   ****
     #******************************
-    property('jointsNames', 'std/vector<std/string>').
-	doc 'Required Joint in that order. Searching by names. It makes flexibility to the order values in the input port with the joints.'
+    property('joint_names', 'std/vector<std/string>').
+	doc 'Joints in the order needed by kdl to solve the forward kinematics.'
 
     #******************************
     #******* Input ports  *********

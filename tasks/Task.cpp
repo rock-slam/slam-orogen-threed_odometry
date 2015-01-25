@@ -60,34 +60,14 @@ void Task::joints_samplesCallback(const base::Time &ts, const ::base::samples::J
     jointVelocities.setZero();
 
     /** Mechanical joints ordered by jointsName **/
-    register int jointIdx = 0;
-    for(std::vector<std::string>::const_iterator it = jointsNames.begin();
-    it != jointsNames.end(); it++)
-    {
-        base::JointState const &state(jointsSamples[*it]);
-
-        /** Avoid NaN values in position **/
-        if (std::isfinite(state.position))
-            jointPositions[jointIdx] = state.position;
-        else
-            jointPositions[jointIdx] = 0.00;
-
-        /** Avoid NaN values in velocity **/
-        if (std::isfinite(state.speed))
-            jointVelocities[jointIdx] = state.speed;
-        else
-            throw std::runtime_error("[THREED_ODOMETRY JOINT_SAMPLES] Joint speed cannot be NaN.");
-
-        jointIdx++;
-
-    }
+    this->joints_samplesUnpack(jointPositions, jointsSamples, joint_names);
 
     /** Fill the rest of jointVelocities (unknown quantities) **/
     Eigen::Matrix<double, Eigen::Dynamic, 1> Ident;
-    Ident.resize(this->contact_points.size()*this->slip_dof, 1);
-    jointVelocities.block(robotKinematics->getRobotJointDoF(), 0, this->contact_points.size()*this->slip_dof, 1) = Ident * base::NaN<double>();
-    Ident.resize(this->contact_points.size()*this->contact_dof, 1);
-    jointVelocities.block(robotKinematics->getRobotJointDoF()+(this->contact_points.size()*this->slip_dof), 0, this->contact_points.size()*this->contact_dof,1) = Ident * base::NaN<double>();
+    Ident.resize(this->slip_joints.size(), 1);
+    jointVelocities.block(this->number_robot_joints, 0, this->slip_joints.size(), 1) = Ident * base::NaN<double>();
+    Ident.resize(this->contact_joints.size(), 1);
+    jointVelocities.block(this->number_robot_joints+this->slip_joints.size(), 0, this->contact_joints.size(),1) = Ident * base::NaN<double>();
 
     #ifdef DEBUG_PRINTS
     std::cout<<"[THREED_ODOMETRY JOINT_SAMPLES] Received time-stamp:\n"<<jointsSamples.time.toMicroseconds()<<"\n";
@@ -166,30 +146,16 @@ bool Task::configureHook()
     /** Read configuration **/
     /************************/
     this->urdfFile = _urdf_file.value();
-    this->modelType = _modelType.value();
-    this->centerOfMass = _robot_CoM.value();
     this->iirConfig = _iir_filter.value();
-    this->jointsNames = _jointsNames.value();
+    this->contact_points = _contact_points.value();
+    this->joint_names = _joint_names.value();
+    this->slip_joints = _slip_joints.value();
+    this->contact_joints = _contact_joints.value();
 
-    register size_t i = 0;
-    this->contact_points.resize(_contact_points.value().size());
-    for (std::vector<double>::iterator it = _contact_points.value().elements.begin();
-            it != _contact_points.value().elements.end(); ++it)
-    {
-        this->contact_points.elements[i] = *it;
-        i++;
-    }
+    this->number_robot_joints =  this->joint_names.size()-this->slip_joints.size()-this->contact_joints.size();
 
-    i = 0;
-    for (std::vector<std::string>::iterator it = _contact_points.value().names.begin();
-            it != _contact_points.value().names.end(); ++it)
-    {
-        this->contact_points.names[i] = *it;
-        i++;
-    }
-
-    this->slip_dof = _slip_dof.value();
-    this->contact_dof = _contact_dof.value();
+    this->centerOfMass = _robot_CoM.value();
+    this->modelType = _modelType.value();
 
     /** Info with regard to the Dynamic Weighting Matrix **/
     if (centerOfMass.dynamicOn)
@@ -206,11 +172,11 @@ bool Task::configureHook()
     /*********************************************/
     /** Configure the Motion Model of the Robot **/
     /*********************************************/
-
     if (modelType == NUMERICAL)
     {
         /** Robot Kinematics Model **/
-        robotKinematics.reset(new threed_odometry::KinematicKDL (urdfFile, this->contact_points.names, this->contact_points.elements, slip_dof, contact_dof));
+        robotKinematics.reset(new threed_odometry::KinematicKDL (urdfFile, this->contact_points,
+                            this->number_robot_joints, this->slip_joints.size(), this->contact_joints.size()));
         RTT::log(RTT::Warning)<<"[THREED_ODOMETRY] Numerical Model selected"<<RTT::endlog();
     }
     else if (modelType == ANALYTICAL)
@@ -223,8 +189,8 @@ bool Task::configureHook()
 
 
     /** Create the Motion Model **/
-    bool motionModelStatus;
-    motionModel = threed_odometry::MotionModel<double>(motionModelStatus, threed_odometry::MotionModel<double>::LOWEST_POINT , robotKinematics);
+    motionModel.reset(new threed_odometry::MotionModel<double> (this->contact_points.size(), this->number_robot_joints,
+                                                        this->slip_joints.size(), this->contact_joints.size()));
 
     /** Weighting Matrix Initialization **/
     WeightMatrix.resize(6*this->contact_points.size(), 6*this->contact_points.size());
@@ -247,7 +213,7 @@ bool Task::configureHook()
     /*******************************/
 
     /** Resize the Velocity covariance **/
-    modelVelCov.resize(robotKinematics->getModelDoF(), robotKinematics->getModelDoF());
+    modelVelCov.resize(robotKinematics->model_dof, robotKinematics->model_dof);
 
     /** Angular velocity coming from gyros **/
     cartesianVelCov.setZero(); modelVelCov.setZero();
@@ -263,8 +229,8 @@ bool Task::configureHook()
     /************************************/
     /** Resize variables for Odometry  **/
     /************************************/
-    jointPositions.resize(robotKinematics->getModelDoF(), 1);
-    jointVelocities.resize(robotKinematics->getModelDoF(), 1);
+    jointPositions.resize(robotKinematics->model_dof, 1);
+    jointVelocities.resize(robotKinematics->model_dof, 1);
 
     /*************************************/
     /** Reset initial Starting position **/
@@ -347,10 +313,7 @@ void Task::cleanupHook()
 }
 WeightingMatrix Task::dynamicWeightMatrix (CenterOfMassConfiguration &centerOfMass, base::Orientation &orientation)
 {
-    std::vector< Eigen::Affine3d > fkRobot; /** Robot kinematics */
-    std::vector< base::Matrix6d > cov; /** Covariance of the kinematics **/
     WeightingMatrix weightLocal; /** Local variable to return */
-    std::vector< int > contactPoints; /** Contact points */
     std::vector< Eigen::Matrix<double, 3, 1> , Eigen::aligned_allocator < Eigen::Matrix<double, 3, 1> > > chainPosition; /** Chain position of contact points **/
     Eigen::Matrix<double, Eigen::Dynamic, 1> forces; /** forces to calculate */
     double theoretical_g = 9.81; /** It is not important to be exactly the real theoretical g at the location **/
@@ -364,19 +327,13 @@ WeightingMatrix Task::dynamicWeightMatrix (CenterOfMassConfiguration &centerOfMa
 
     if (centerOfMass.dynamicOn)
     {
-        /** Get the Forward Kinematics from the model  **/
-        motionModel.getKinematics(fkRobot, cov);
-
-        /** Points in contact **/
-        contactPoints = motionModel.getPointsInContact();
-
         /** Resize the chainPosition **/
-        chainPosition.resize(contactPoints.size());
+        chainPosition.resize(this->contact_points.size());
 
         /** Form the chainPosition vector **/
-        for (std::vector<int>::size_type i = 0; i < contactPoints.size(); ++i)
+        for (std::vector<int>::size_type i = 0; i < this->contact_points.size(); ++i)
         {
-            chainPosition[i] = fkRobot[i].translation();
+            chainPosition[i] = this->fkRobotTrans[i].translation();
         }
 
         /** Compute the forces **/
@@ -410,8 +367,17 @@ WeightingMatrix Task::dynamicWeightMatrix (CenterOfMassConfiguration &centerOfMa
 void Task::updateOdometry (const double &delta_t)
 {
 
-    /** Update the Motion Model (Forward Kinematics and Contact Points) **/
-    this->motionModel.updateKinematics(jointPositions);
+    Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> J;
+    std::vector<double> vectorPositions(robotKinematics->model_dof, 0);
+
+    /** Copy Eigen to vector **/
+    Eigen::Map <Eigen::Matrix <double, Eigen::Dynamic, 1> > (&(vectorPositions[0]), robotKinematics->model_dof) = jointPositions;
+
+    /** Update the Motion Model (Forward Kinematics and to set Contact Points) **/
+    this->robotKinematics->fkSolver(vectorPositions, this->fkRobotTrans, this->fkRobotCov);
+
+    /** Compute Robot Jacobian matrix **/
+    J = this->robotKinematics->jacobianSolver(this->joint_names, vectorPositions);
 
     /** Compute dynamic Weight matrix depending on the attitude **/
     base::Pose tempPose( pose );
@@ -421,9 +387,18 @@ void Task::updateOdometry (const double &delta_t)
     if (!_orientation_samples_noise_on.value())
         cartesianVelCov.setZero();
 
+    /** Reorganize the Jacobian matrix as required by the motion model **/
+    Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> organized_J;
+    organized_J.resize(6*this->contact_points.size(), robotKinematics->model_dof);
+
+    std::vector<std::string> motion_model_joint_names;
+    motion_model_joint_names.resize(joint_names.size());
+
+    robotKinematics->organizeJacobian(0, motion_model_joint_names, joint_names, J, organized_J);
+
     /** Solve the navigation kinematics **/
-    this->motionModel.navSolver(jointPositions, cartesianVelocities, jointVelocities,
-                                cartesianVelCov, modelVelCov, WeightMatrix);
+    this->motionModel->navSolver(jointPositions, jointVelocities, organized_J, cartesianVelocities,
+                                modelVelCov, cartesianVelCov, WeightMatrix);
 
     /** Bessel IIR Low-pass filter of the linear cartesianVelocities from the Motion Model **/
     if (iirConfig.iirOn)
@@ -471,13 +446,40 @@ void Task::updateOdometry (const double &delta_t)
     return;
 }
 
+void Task::joints_samplesUnpack(Eigen::Matrix< double, Eigen::Dynamic, 1  > &joints_vector,
+                                   const ::base::samples::Joints &original_joints,
+                                   const std::vector<std::string> &order_names)
+{
+    assert (joints_vector.size() == original_joints.size());
+
+    register int jointIdx = 0;
+    for(std::vector<std::string>::const_iterator it = order_names.begin(); it != order_names.end(); it++)
+    {
+        base::JointState const &state(original_joints[*it]);
+        std::cout<<"Joint Name: "<<*it<<"\n";
+
+        /** Avoid NaN values in position **/
+        if (std::isfinite(state.position))
+            joints_vector[jointIdx] = state.position;
+        else
+            joints_vector[jointIdx] = 0.00;
+
+        /** Avoid NaN values in velocity **/
+        if (std::isfinite(state.speed))
+            joints_vector[jointIdx] = state.speed;
+        else
+            throw std::runtime_error("[THREED_ODOMETRY JOINT_SAMPLES] Joint speed cannot be NaN.");
+
+        jointIdx++;
+    }
+    return;
+}
 
 void Task::outputPortSamples(const Eigen::Matrix< double, Eigen::Dynamic, 1  > &jointPositions,
                                 const Eigen::Matrix< double, 6, 1  > &cartesianVelocities,
                                 const Eigen::Matrix< double, Eigen::Dynamic, 1  > &jointVelocities)
 {
     base::samples::RigidBodyState poseOut;
-    std::vector<Eigen::Affine3d> fkRobot;
 
     /***************************************/
     /** Port out the OutPorts information **/
@@ -511,24 +513,21 @@ void Task::outputPortSamples(const Eigen::Matrix< double, Eigen::Dynamic, 1  > &
     /** Debug information **/
     if (_output_debug.value())
     {
-        std::vector<Eigen::Affine3d> fkRobot;
-        std::vector<base::Matrix6d> fkRobotCov;
-        this->motionModel.getKinematics(fkRobot, fkRobotCov);
 
         /** Forward kinematics information. Set of contact points. **/
         threed_odometry::RobotContactPointsRbs robotKineRbs;
 
         robotKineRbs.time = poseOut.time;
-        robotKineRbs.rbsChain.resize(fkRobot.size());
+        robotKineRbs.rbsChain.resize(this->fkRobotTrans.size());
 
         /** For the movement of the points with respect to the body center **/
-        for (register size_t i=0; i<fkRobot.size(); ++i)
+        for (register size_t i=0; i<this->fkRobotTrans.size(); ++i)
         {
             robotKineRbs.rbsChain[i].invalidate();
             robotKineRbs.rbsChain[i].time = robotKineRbs.time;
-            robotKineRbs.rbsChain[i].setTransform(fkRobot[i]);
-            robotKineRbs.rbsChain[i].cov_position = fkRobotCov[i].topLeftCorner<3,3>();
-            robotKineRbs.rbsChain[i].cov_orientation = fkRobotCov[i].bottomRightCorner<3,3>();
+            robotKineRbs.rbsChain[i].setTransform(this->fkRobotTrans[i]);
+            robotKineRbs.rbsChain[i].cov_position = this->fkRobotCov[i].topLeftCorner<3,3>();
+            robotKineRbs.rbsChain[i].cov_orientation = this->fkRobotCov[i].bottomRightCorner<3,3>();
         }
 
         _fkchains_rbs_out.write(robotKineRbs);
