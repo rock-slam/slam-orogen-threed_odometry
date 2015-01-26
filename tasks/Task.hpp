@@ -232,9 +232,17 @@ namespace threed_odometry {
 
         /** @brief
          */
-        void joints_samplesUnpack(Eigen::Matrix< double, Eigen::Dynamic, 1  > &joints_vector,
-                                   const ::base::samples::Joints &original_joints,
-                                   const std::vector<std::string> &order_names);
+        void joints_samplesUnpack(const ::base::samples::Joints &original_joints,
+                                const std::vector<std::string> &order_names,
+                                Eigen::Matrix< double, Eigen::Dynamic, 1  > &joint_positions,
+                                Eigen::Matrix< double, Eigen::Dynamic, 1  > &joint_velocities);
+
+        void joints_samplesMotionModel(const ::base::samples::Joints &original_joints,
+                                const std::vector<std::string> &joint_names,
+                                const std::vector<std::string> &slip_names,
+                                const std::vector<std::string> &contact_names,
+                                Eigen::Matrix< double, Eigen::Dynamic, 1  > &joint_positions,
+                                Eigen::Matrix< double, Eigen::Dynamic, 1  > &joint_velocities);
 
 
         /** \brief Store the variables in the Output ports

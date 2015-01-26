@@ -60,14 +60,7 @@ void Task::joints_samplesCallback(const base::Time &ts, const ::base::samples::J
     jointVelocities.setZero();
 
     /** Mechanical joints ordered by jointsName **/
-    this->joints_samplesUnpack(jointPositions, jointsSamples, joint_names);
-
-    /** Fill the rest of jointVelocities (unknown quantities) **/
-    Eigen::Matrix<double, Eigen::Dynamic, 1> Ident;
-    Ident.resize(this->slip_joints.size(), 1);
-    jointVelocities.block(this->number_robot_joints, 0, this->slip_joints.size(), 1) = Ident * base::NaN<double>();
-    Ident.resize(this->contact_joints.size(), 1);
-    jointVelocities.block(this->number_robot_joints+this->slip_joints.size(), 0, this->contact_joints.size(),1) = Ident * base::NaN<double>();
+    this->joints_samplesUnpack(jointsSamples, joint_names, jointPositions, jointVelocities);
 
     #ifdef DEBUG_PRINTS
     std::cout<<"[THREED_ODOMETRY JOINT_SAMPLES] Received time-stamp:\n"<<jointsSamples.time.toMicroseconds()<<"\n";
@@ -394,11 +387,11 @@ void Task::updateOdometry (const double &delta_t)
     std::vector<std::string> motion_model_joint_names;
     motion_model_joint_names.resize(joint_names.size());
 
-    robotKinematics->organizeJacobian(0, motion_model_joint_names, joint_names, J, organized_J);
+    //robotKinematics->organizeJacobian(0, motion_model_joint_names, joint_names, J, organized_J);
 
     /** Solve the navigation kinematics **/
-    this->motionModel->navSolver(jointPositions, jointVelocities, organized_J, cartesianVelocities,
-                                modelVelCov, cartesianVelCov, WeightMatrix);
+    //this->motionModel->navSolver(jointPositions, jointVelocities, organized_J, cartesianVelocities,
+    //                            modelVelCov, cartesianVelCov, WeightMatrix);
 
     /** Bessel IIR Low-pass filter of the linear cartesianVelocities from the Motion Model **/
     if (iirConfig.iirOn)
@@ -446,33 +439,65 @@ void Task::updateOdometry (const double &delta_t)
     return;
 }
 
-void Task::joints_samplesUnpack(Eigen::Matrix< double, Eigen::Dynamic, 1  > &joints_vector,
-                                   const ::base::samples::Joints &original_joints,
-                                   const std::vector<std::string> &order_names)
+void Task::joints_samplesUnpack(const ::base::samples::Joints &original_joints,
+                                const std::vector<std::string> &order_names,
+                                Eigen::Matrix< double, Eigen::Dynamic, 1  > &joint_positions,
+                                Eigen::Matrix< double, Eigen::Dynamic, 1  > &joint_velocities)
 {
-    assert (joints_vector.size() == original_joints.size());
+    assert (joint_positions.size() == original_joints.size());
+    assert (joint_velocities.size() == original_joints.size());
+    joint_positions.setZero();
+    joint_velocities.setZero();
 
     register int jointIdx = 0;
     for(std::vector<std::string>::const_iterator it = order_names.begin(); it != order_names.end(); it++)
     {
         base::JointState const &state(original_joints[*it]);
         std::cout<<"Joint Name: "<<*it<<"\n";
+        std::cout<<"Joint Position: "<<state.position<<"\n";
 
         /** Avoid NaN values in position **/
         if (std::isfinite(state.position))
-            joints_vector[jointIdx] = state.position;
+            joint_positions[jointIdx] = state.position;
         else
-            joints_vector[jointIdx] = 0.00;
+            joint_positions[jointIdx] = 0.00;
 
         /** Avoid NaN values in velocity **/
         if (std::isfinite(state.speed))
-            joints_vector[jointIdx] = state.speed;
+            joint_velocities[jointIdx] = state.speed;
         else
             throw std::runtime_error("[THREED_ODOMETRY JOINT_SAMPLES] Joint speed cannot be NaN.");
 
         jointIdx++;
     }
     return;
+}
+
+void Task::joints_samplesMotionModel(const ::base::samples::Joints &original_joints,
+                                const std::vector<std::string> &joint_names,
+                                const std::vector<std::string> &slip_names,
+                                const std::vector<std::string> &contact_names,
+                                Eigen::Matrix< double, Eigen::Dynamic, 1  > &joint_positions,
+                                Eigen::Matrix< double, Eigen::Dynamic, 1  > &joint_velocities)
+{
+    std::vector<std::string> order_names;
+    for(std::vector<std::string>::const_iterator it = joint_names.begin(); it != joint_names.end(); it++)
+    {
+
+    }
+
+    /** Motion Model joints ordered by order_names **/
+    this->joints_samplesUnpack(original_joints, order_names, joint_positions, joint_velocities);
+
+    /** Fill the rest of jointVelocities (unknown quantities) **/
+    Eigen::Matrix<double, Eigen::Dynamic, 1> Ident;
+    Ident.resize(this->slip_joints.size(), 1);
+    joint_velocities.block(this->number_robot_joints, 0, this->slip_joints.size(), 1) = Ident * base::NaN<double>();
+    Ident.resize(this->contact_joints.size(), 1);
+    joint_velocities.block(this->number_robot_joints+this->slip_joints.size(), 0, this->contact_joints.size(),1) = Ident * base::NaN<double>();
+
+    return;
+
 }
 
 void Task::outputPortSamples(const Eigen::Matrix< double, Eigen::Dynamic, 1  > &jointPositions,
