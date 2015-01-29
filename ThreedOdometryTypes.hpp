@@ -4,15 +4,10 @@
 #include <vector>
 #include <base/Time.hpp>
 #include <base/Eigen.hpp>
-#include <base/NamedVector.hpp>
 #include <base/samples/RigidBodyState.hpp>
 
 namespace threed_odometry
 {
-    class NamedVectord : public ::base::NamedVector<double>
-    {
-    };
-
     enum ModelType
     {
         ANALYTICAL,
