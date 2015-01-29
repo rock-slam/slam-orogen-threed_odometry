@@ -30,11 +30,11 @@ task_context "Task" do
     property('urdf_file', '/std/string').
         doc "path to the rover urdf file"
 
-    property('contact_points', 'std/vector<std/string>').
-	doc 'Named Vector with the contact point link name in the URDF file and'+
-        'The number values is the effective wheel radius average only for wheeled robot. The vector size is equivalent to the number of' +
-        'kinematic trees in the robot (read documentation of threed_odometry library). In case of leg robots' +
-        'keep the right vector size but set to zero the effective wheel radius.'
+    property('contact_point_segments', 'std/vector<std/string>').
+	doc 'Segment names for the segment of the last contact point in the URDF file. This is the last element per each chain.'
+
+    property('contact_angle_segments', 'std/vector<std/string>').
+	doc 'Segment names for the segment of the last contact angle in the URDF file.'
 
     property('slip_joints', 'std/vector<std/string>').
 	doc 'Joints in the model which are part of the slip vectors.'

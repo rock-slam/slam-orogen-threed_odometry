@@ -9,7 +9,7 @@
 #define R2D 180.00/M_PI /** Convert radian to degree **/
 #endif
 
-#define DEBUG_PRINTS 1
+//#define DEBUG_PRINTS 1
 
 using namespace threed_odometry;
 
@@ -140,7 +140,8 @@ bool Task::configureHook()
     /************************/
     this->urdfFile = _urdf_file.value();
     this->iirConfig = _iir_filter.value();
-    this->contact_points = _contact_points.value();
+    this->contact_point_segments = _contact_point_segments.value();
+    this->contact_angle_segments = _contact_angle_segments.value();
     this->joint_names = _joint_names.value();
     this->slip_joints = _slip_joints.value();
     this->contact_joints = _contact_joints.value();
@@ -168,8 +169,8 @@ bool Task::configureHook()
     if (modelType == NUMERICAL)
     {
         /** Robot Kinematics Model **/
-        robotKinematics.reset(new threed_odometry::KinematicKDL (urdfFile, this->contact_points,
-                            this->number_robot_joints, this->slip_joints.size(), this->contact_joints.size()));
+        robotKinematics.reset(new threed_odometry::KinematicKDL (urdfFile, this->contact_point_segments,
+                            this->contact_angle_segments, this->number_robot_joints, this->slip_joints.size(), this->contact_joints.size()));
         RTT::log(RTT::Warning)<<"[THREED_ODOMETRY] Numerical Model selected"<<RTT::endlog();
     }
     else if (modelType == ANALYTICAL)
@@ -182,14 +183,23 @@ bool Task::configureHook()
 
 
     /** Create the Motion Model **/
-    motionModel.reset(new threed_odometry::MotionModel<double> (this->contact_points.size(), this->number_robot_joints,
+    motionModel.reset(new threed_odometry::MotionModel<double> (this->contact_point_segments.size(), this->number_robot_joints,
                                                         this->slip_joints.size(), this->contact_joints.size()));
 
     /** Weighting Matrix Initialization **/
-    WeightMatrix.resize(6*this->contact_points.size(), 6*this->contact_points.size());
+    WeightMatrix.resize(6*this->contact_point_segments.size(), 6*this->contact_point_segments.size());
     WeightMatrix.setIdentity();
     WeightMatrix =  base::NaN<double>() * WeightMatrix;
 
+    /*************************/
+    /** Motion Model Joints **/
+    /*************************/
+    this->motion_model_joint_names.resize(this->joint_names.size());
+    bool result = this->joints_samplesMotionModel(this->motion_model_joint_names, this->joint_names, this->slip_joints, this->contact_joints);
+    if (!result)
+    {
+        throw std::runtime_error("[THREED_ODOMETRY] Error Ordering Motion Model joints");
+    }
 
     /****************/
     /** IIR Filter **/
@@ -312,19 +322,19 @@ WeightingMatrix Task::dynamicWeightMatrix (CenterOfMassConfiguration &centerOfMa
     double theoretical_g = 9.81; /** It is not important to be exactly the real theoretical g at the location **/
 
     /** Set to the identity **/
-    weightLocal.resize(6*this->contact_points.size(), 6*this->contact_points.size());
+    weightLocal.resize(6*this->contact_point_segments.size(), 6*this->contact_point_segments.size());
     weightLocal.setIdentity();
 
     /** Size the force vector **/
-    forces.resize(this->contact_points.size(), 1);
+    forces.resize(this->contact_point_segments.size(), 1);
 
     if (centerOfMass.dynamicOn)
     {
         /** Resize the chainPosition **/
-        chainPosition.resize(this->contact_points.size());
+        chainPosition.resize(this->contact_point_segments.size());
 
         /** Form the chainPosition vector **/
-        for (std::vector<int>::size_type i = 0; i < this->contact_points.size(); ++i)
+        for (std::vector<int>::size_type i = 0; i < this->contact_point_segments.size(); ++i)
         {
             chainPosition[i] = this->fkRobotTrans[i].translation();
         }
@@ -333,7 +343,7 @@ WeightingMatrix Task::dynamicWeightMatrix (CenterOfMassConfiguration &centerOfMa
         //exoter::BodyState::forceAnalysis(centerOfMass.coordinates, chainPosition, static_cast<Eigen::Quaterniond>(orientation), theoretical_g, forces);
 
         /** Compute the percentages **/
-        for (register int i=0; i<static_cast<int>(this->contact_points.size()); ++i)
+        for (register int i=0; i<static_cast<int>(this->contact_point_segments.size()); ++i)
         {
             if (forces[i] > 0.00)
                 centerOfMass.percentage[i] = forces[i] / theoretical_g;
@@ -343,7 +353,7 @@ WeightingMatrix Task::dynamicWeightMatrix (CenterOfMassConfiguration &centerOfMa
     }
 
     /** Form the weighting Matrix (static or dynamic it needs to be created) **/
-    for (register int i=0; i<static_cast<int>(this->contact_points.size()); ++i)
+    for (register int i=0; i<static_cast<int>(this->contact_point_segments.size()); ++i)
     {
         weightLocal.block<6,6>(6*i, 6*i) = centerOfMass.percentage[i] * Eigen::Matrix<double, 6, 6>::Identity();
     }
@@ -367,7 +377,7 @@ void Task::updateOdometry (const double &delta_t)
     Eigen::Map <Eigen::Matrix <double, Eigen::Dynamic, 1> > (&(vectorPositions[0]), robotKinematics->model_dof) = jointPositions;
 
     /** Update the Motion Model (Forward Kinematics and to set Contact Points) **/
-    this->robotKinematics->fkSolver(vectorPositions, this->fkRobotTrans, this->fkRobotCov);
+    this->robotKinematics->fkSolver(vectorPositions, this->contact_point_segments, this->fkRobotTrans, this->fkRobotCov);
 
     /** Compute Robot Jacobian matrix **/
     J = this->robotKinematics->jacobianSolver(this->joint_names, vectorPositions);
@@ -382,16 +392,27 @@ void Task::updateOdometry (const double &delta_t)
 
     /** Reorganize the Jacobian matrix as required by the motion model **/
     Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> organized_J;
-    organized_J.resize(6*this->contact_points.size(), robotKinematics->model_dof);
+    organized_J.resize(6*this->contact_point_segments.size(), robotKinematics->model_dof);
 
-    std::vector<std::string> motion_model_joint_names;
-    motion_model_joint_names.resize(joint_names.size());
+    /** Get joints position and velocity ordered by Motion Model joint names **/
+    this->joints_samplesUnpack(jointsSamples, motion_model_joint_names, jointPositions, jointVelocities);
 
-    //robotKinematics->organizeJacobian(0, motion_model_joint_names, joint_names, J, organized_J);
+    /** Fill the rest of jointVelocities (unknown quantities) **/
+    Eigen::Matrix<double, Eigen::Dynamic, 1> Ident;
+    Ident.resize(this->slip_joints.size(), 1);
+    jointVelocities.block(this->number_robot_joints, 0, this->slip_joints.size(), 1) = Ident * base::NaN<double>();
+    Ident.resize(this->contact_joints.size(), 1);
+    jointVelocities.block(this->number_robot_joints+this->slip_joints.size(), 0, this->contact_joints.size(),1) = Ident * base::NaN<double>();
+
+    robotKinematics->organizeJacobian(0, motion_model_joint_names, joint_names, J, organized_J);
+
+    #ifdef DEBUG_PRINTS
+    std::cout<<"** [UPDATE_ODOMETRY] JACOBIAN KDL is of size "<<organized_J.rows()<<" x "<<organized_J.cols()<<"\n"<< organized_J<<"\n\n";
+    #endif
 
     /** Solve the navigation kinematics **/
-    //this->motionModel->navSolver(jointPositions, jointVelocities, organized_J, cartesianVelocities,
-    //                            modelVelCov, cartesianVelCov, WeightMatrix);
+    this->motionModel->navSolver(jointPositions, jointVelocities, organized_J, cartesianVelocities,
+                                modelVelCov, cartesianVelCov, WeightMatrix);
 
     /** Bessel IIR Low-pass filter of the linear cartesianVelocities from the Motion Model **/
     if (iirConfig.iirOn)
@@ -453,8 +474,6 @@ void Task::joints_samplesUnpack(const ::base::samples::Joints &original_joints,
     for(std::vector<std::string>::const_iterator it = order_names.begin(); it != order_names.end(); it++)
     {
         base::JointState const &state(original_joints[*it]);
-        std::cout<<"Joint Name: "<<*it<<"\n";
-        std::cout<<"Joint Position: "<<state.position<<"\n";
 
         /** Avoid NaN values in position **/
         if (std::isfinite(state.position))
@@ -473,31 +492,57 @@ void Task::joints_samplesUnpack(const ::base::samples::Joints &original_joints,
     return;
 }
 
-void Task::joints_samplesMotionModel(const ::base::samples::Joints &original_joints,
+bool Task::joints_samplesMotionModel(std::vector<std::string> &order_names,
                                 const std::vector<std::string> &joint_names,
                                 const std::vector<std::string> &slip_names,
-                                const std::vector<std::string> &contact_names,
-                                Eigen::Matrix< double, Eigen::Dynamic, 1  > &joint_positions,
-                                Eigen::Matrix< double, Eigen::Dynamic, 1  > &joint_velocities)
+                                const std::vector<std::string> &contact_names)
 {
-    std::vector<std::string> order_names;
-    for(std::vector<std::string>::const_iterator it = joint_names.begin(); it != joint_names.end(); it++)
-    {
+    /** Clean order joints names **/
+    order_names.clear();
 
+    /** Get only the robot physical joints **/
+    {
+        bool presence;
+        for(std::vector<std::string>::const_iterator it = joint_names.begin(); it != joint_names.end(); it++)
+        {
+            presence = false;
+
+            /** Check in case the joint is not a slip joint **/
+            std::vector<std::string>::const_iterator st = find(slip_names.begin(), slip_names.end(), *it);
+            if (st != slip_names.end())
+                presence = true;
+
+            /** Check in case the joint is not a contact angle joint **/
+            std::vector<std::string>::const_iterator ct = find(contact_names.begin(), contact_names.end(), *it);
+            if (ct != contact_names.end())
+                presence = true;
+
+            if (!presence)
+            {
+                order_names.push_back(*it);
+            }
+        }
     }
 
-    /** Motion Model joints ordered by order_names **/
-    this->joints_samplesUnpack(original_joints, order_names, joint_positions, joint_velocities);
+    /** Concatenate the slip joints at the end **/
+    order_names.insert(order_names.end(), slip_joints.begin(), slip_joints.end());
 
-    /** Fill the rest of jointVelocities (unknown quantities) **/
-    Eigen::Matrix<double, Eigen::Dynamic, 1> Ident;
-    Ident.resize(this->slip_joints.size(), 1);
-    joint_velocities.block(this->number_robot_joints, 0, this->slip_joints.size(), 1) = Ident * base::NaN<double>();
-    Ident.resize(this->contact_joints.size(), 1);
-    joint_velocities.block(this->number_robot_joints+this->slip_joints.size(), 0, this->contact_joints.size(),1) = Ident * base::NaN<double>();
+    /** Concatenate the contact joints at the end **/
+    order_names.insert(order_names.end(), contact_joints.begin(), contact_joints.end());
 
-    return;
+    #ifdef DEBUG_PRINTS
+    std::cout<<"[JOINTS_SAMPLES_MOTION_MODEL] Order Joints:\n";
+    for(std::vector<std::string>::const_iterator it = order_names.begin(); it != order_names.end(); it++)
+    {
+        std::cout<<*it<<"\n";
+    }
+    #endif
 
+    /** Check order names joints size **/
+    if (order_names.size() != joint_names.size())
+        return false;
+    else
+        return true;
 }
 
 void Task::outputPortSamples(const Eigen::Matrix< double, Eigen::Dynamic, 1  > &jointPositions,
@@ -564,30 +609,30 @@ void Task::outputPortSamples(const Eigen::Matrix< double, Eigen::Dynamic, 1  > &
 
 
     #ifdef DEBUG_PRINTS
-    std::cout<<"[EXOTER_ODOMETRY OUTPUT_PORTS]: poseOut.position\n"<<poseOut.position<<"\n";
-    std::cout<<"[EXOTER_ODOMETRY OUTPUT_PORTS]: poseOut.cov_position\n"<<poseOut.cov_position<<"\n";
-    std::cout<<"[EXOTER_ODOMETRY OUTPUT_PORTS]: poseOut.velocity\n"<<poseOut.velocity<<"\n";
+    std::cout<<"[THREED_ODOMETRY OUTPUT_PORTS]: poseOut.position\n"<<poseOut.position<<"\n";
+    std::cout<<"[THREED_ODOMETRY OUTPUT_PORTS]: poseOut.cov_position\n"<<poseOut.cov_position<<"\n";
+    std::cout<<"[THREED_ODOMETRY OUTPUT_PORTS]: poseOut.velocity\n"<<poseOut.velocity<<"\n";
     Eigen::Vector3d euler;
     euler[2] = poseOut.orientation.toRotationMatrix().eulerAngles(2,1,0)[0];//YAW
     euler[1] = poseOut.orientation.toRotationMatrix().eulerAngles(2,1,0)[1];//PITCH
     euler[0] = poseOut.orientation.toRotationMatrix().eulerAngles(2,1,0)[2];//ROLL
-    std::cout<<"[EXOTER_ODOMETRY OUTPUT_PORTS]: Pose Orientation\n";
+    std::cout<<"[THREED_ODOMETRY OUTPUT_PORTS]: Pose Orientation\n";
     std::cout<<"Roll: "<<euler[0]*R2D<<" Pitch: "<<euler[1]*R2D<<" Yaw: "<<euler[2]*R2D<<"\n";
-    std::cout<<"[EXOTER_ODOMETRY OUTPUT_PORTS]: Pose cov_orientation\n"<<poseOut.cov_orientation<<"\n";
+    std::cout<<"[THREED_ODOMETRY OUTPUT_PORTS]: Pose cov_orientation\n"<<poseOut.cov_orientation<<"\n";
     #endif
 
     #ifdef DEBUG_PRINTS
-    std::cout<<"[EXOTER_ODOMETRY OUTPUT_PORTS]: deltaPose.position\n"<<deltaPose.position<<"\n";
-    std::cout<<"[EXOTER_ODOMETRY OUTPUT_PORTS]: deltaPose.cov_position\n"<<deltaPose.cov_position<<"\n";
+    std::cout<<"[THREED_ODOMETRY OUTPUT_PORTS]: deltaPose.position\n"<<deltaPose.position<<"\n";
+    std::cout<<"[THREED_ODOMETRY OUTPUT_PORTS]: deltaPose.cov_position\n"<<deltaPose.cov_position<<"\n";
     Eigen::Vector3d deltaEuler;
     deltaEuler[2] = deltaPose.orientation.toRotationMatrix().eulerAngles(2,1,0)[0];//YAW
     deltaEuler[1] = deltaPose.orientation.toRotationMatrix().eulerAngles(2,1,0)[1];//PITCH
     deltaEuler[0] = deltaPose.orientation.toRotationMatrix().eulerAngles(2,1,0)[2];//ROLL
-    std::cout<< "[EXOTER_ODOMETRY OUTPUT_PORTS]: Delta Pose Orientation\n";
+    std::cout<< "[THREED_ODOMETRY OUTPUT_PORTS]: Delta Pose Orientation\n";
     std::cout<< "******** Delta Rotation *******"<<"\n";
     std::cout<< "Roll: "<<deltaEuler[0]*R2D<<" Pitch: "<<deltaEuler[1]*R2D<<" Yaw: "<<deltaEuler[2]*R2D<<"\n";
-    std::cout<<"[EXOTER_ODOMETRY OUTPUT_PORTS]: Delta pose cov_orientation\n"<<deltaPose.cov_orientation<<"\n";
-    std::cout<<"[EXOTER_ODOMETRY OUTPUT_PORTS]\n ******************** END ******************** \n";
+    std::cout<<"[THREED_ODOMETRY OUTPUT_PORTS]: Delta pose cov_orientation\n"<<deltaPose.cov_orientation<<"\n";
+    std::cout<<"[THREED_ODOMETRY OUTPUT_PORTS]\n ******************** END ******************** \n";
     #endif
 
 

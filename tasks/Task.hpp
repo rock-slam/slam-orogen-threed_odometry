@@ -69,7 +69,9 @@ namespace threed_odometry {
 
         std::string urdfFile;
 
-        std::vector<std::string> contact_points;
+        std::vector<std::string> contact_point_segments;
+
+        std::vector<std::string> contact_angle_segments;
 
         /** Order of Joints by Name **/
         std::vector<std::string> joint_names;
@@ -91,6 +93,8 @@ namespace threed_odometry {
         /******************************************/
 
         int number_robot_joints;
+
+        std::vector<std::string> motion_model_joint_names;
 
         /** Joint, Slip and Contact Angle positions NOTE: The order of the storage needs to be coincident if used as input for the motionModel **/
         Eigen::Matrix< double, Eigen::Dynamic, 1  > jointPositions;
@@ -237,12 +241,10 @@ namespace threed_odometry {
                                 Eigen::Matrix< double, Eigen::Dynamic, 1  > &joint_positions,
                                 Eigen::Matrix< double, Eigen::Dynamic, 1  > &joint_velocities);
 
-        void joints_samplesMotionModel(const ::base::samples::Joints &original_joints,
+        bool joints_samplesMotionModel(std::vector<std::string> &order_names,
                                 const std::vector<std::string> &joint_names,
                                 const std::vector<std::string> &slip_names,
-                                const std::vector<std::string> &contact_names,
-                                Eigen::Matrix< double, Eigen::Dynamic, 1  > &joint_positions,
-                                Eigen::Matrix< double, Eigen::Dynamic, 1  > &joint_velocities);
+                                const std::vector<std::string> &contact_names);
 
 
         /** \brief Store the variables in the Output ports
