@@ -30,19 +30,7 @@ task_context "Task" do
     property('urdf_file', '/std/string').
         doc "path to the rover urdf file"
 
-    property('contact_point_segments', 'std/vector<std/string>').
-	doc 'Segment names for the segment of the last contact point in the URDF file. This is the last element per each chain.'
-
-    property('contact_angle_segments', 'std/vector<std/string>').
-	doc 'Segment names for the segment of the last contact angle in the URDF file.'
-
-    property('slip_joints', 'std/vector<std/string>').
-	doc 'Joints in the model which are part of the slip vectors.'
-
-    property('contact_joints', 'std/vector<std/string>').
-	doc 'Joints in the model which are part of the contact vectors.'
-
-    property('modelType', 'threed_odometry/ModelType', :NUMERICAL).
+    property('kinematic_model_type', 'threed_odometry/ModelType', :NUMERICAL).
 	doc 'Model type to use: ANALYTICAL or NUMERICAL approach.'+
             'You must write :NUMERICAL in case you are using the Kinematics model from threed_odometry library.'
 
@@ -55,13 +43,6 @@ task_context "Task" do
     property('delta_odometry_target_frame', '/std/string').doc 'Text to define the To Frame for the transformer (delta pose)'
 
     #******************************
-    #**** Rover Properties ********
-    #******************************
-    property('robot_CoM', 'threed_odometry/CenterOfMassConfiguration').
-        doc 'Configuration values of robot Center of Mass to compute the Center of Gravity. Used for the Weight matrix of the Motion Model.'+
-        'Look in Types for further details.'
-
-    #******************************
     #*** IIR Filter Properties ****
     #******************************
     property('iir_filter', 'threed_odometry/IIRCoefficients').
@@ -72,13 +53,26 @@ task_context "Task" do
     #******************************
     property('orientation_samples_noise_on', 'bool').
         doc 'Set to true if desired orientation noise from orientation_samples input port.'+
-        "Otherwise it uses the motion model Leasts-Squares error to fill the uncertainty."
+        "Otherwise it uses the motion model Leasts-Squares error to fill the uncertainty for the orientation."
 
     #******************************
     #***   Joints Properties   ****
     #******************************
-    property('joint_names', 'std/vector<std/string>').
+    property('contact_point_segments', 'std/vector<std/string>').
+	doc 'Segment names for the segment of the last contact point in the URDF file. This is the last element per each chain.'
+
+    property('contact_angle_segments', 'std/vector<std/string>').
+	doc 'Segment names for the segment of the last contact angle in the URDF file.'
+
+    property('all_joint_names', 'std/vector<std/string>').
 	doc 'Joints in the order needed by kdl to solve the forward kinematics.'
+
+    property('slip_joint_names', 'std/vector<std/string>').
+	doc 'Joints in the model which are part of the slip model.'
+
+    property('contact_joint_names', 'std/vector<std/string>').
+	doc 'Joints in the model which are part of the contact angle.'
+
 
     #******************************
     #******* Input ports  *********
@@ -92,6 +86,12 @@ task_context "Task" do
     input_port('orientation_samples', '/base/samples/RigidBodyState').
         needs_reliable_connection.
         doc 'provides timestamped orientation samples.'
+
+    input_port('weighting_samples', '/base/MatrixXd').
+        needs_reliable_connection.
+        doc 'provides timestamped Weight information about the contact points. Weighting Matrix.'+
+            '(support polygon or contact sensory information could be use to provide this matrix).'
+
 
     ####################################################################
     # INFO AND RECOMMENDATIONS:
@@ -128,9 +128,6 @@ task_context "Task" do
     output_port('fkchains_rbs_out', 'threed_odometry/RobotContactPointsRbs').
         doc 'Rigid Body States with the position and orientation of Contact points frame'+
             'of the robot with respect to the body frame.'
-
-    output_port('weighting_vector', 'base::VectorXd').
-        doc 'Weighing vector of the Static force (could be used for support polygon).'
 
     port_driven
 

@@ -74,16 +74,13 @@ namespace threed_odometry {
         std::vector<std::string> contact_angle_segments;
 
         /** Order of Joints by Name **/
-        std::vector<std::string> joint_names;
+        std::vector<std::string> all_joint_names;
 
-        std::vector<std::string> slip_joints;
+        std::vector<std::string> slip_joint_names;
 
-        std::vector<std::string> contact_joints;
+        std::vector<std::string> contact_joint_names;
 
-        ModelType modelType;
-
-        /** Center of Mass location of the robot **/
-        CenterOfMassConfiguration centerOfMass;
+        ModelType kinematic_model_type;
 
         /** IIR filter configuration structure **/
         IIRCoefficients iirConfig;
@@ -97,16 +94,16 @@ namespace threed_odometry {
         std::vector<std::string> motion_model_joint_names;
 
         /** Joint, Slip and Contact Angle positions NOTE: The order of the storage needs to be coincident if used as input for the motionModel **/
-        Eigen::Matrix< double, Eigen::Dynamic, 1  > jointPositions;
+        Eigen::Matrix< double, Eigen::Dynamic, 1  > joint_positions;
 
         /** Joint, Slip and Contact Angle velocities NOTE: The order of the storage needs to be coincident if used as input for the motionModel **/
-        Eigen::Matrix< double, Eigen::Dynamic, 1  > jointVelocities;
+        Eigen::Matrix< double, Eigen::Dynamic, 1  > joint_velocities;
 
         /** Linear and Angular velocities NOTE: The order of the storage needs to be coincident if used as input for the motionModel **/
-        Eigen::Matrix< double, 6, 1  > cartesianVelocities;
+        Eigen::Matrix< double, 6, 1  > cartesian_velocities;
 
-        /** Buffer for the storage of cartesianVelocities variables  (for integration assuming constant acceleration) **/
-        std::vector< Eigen::Matrix <double, 6, 1> , Eigen::aligned_allocator < Eigen::Matrix <double, 6, 1> > > vectorCartesianVelocities;
+        /** Buffer for the storage of cartesian_velocities variables  (for integration assuming constant acceleration) **/
+        std::vector< Eigen::Matrix <double, 6, 1> , Eigen::aligned_allocator < Eigen::Matrix <double, 6, 1> > > vector_cartesian_velocities;
 
         /** Robot Kinematic Model **/
         boost::shared_ptr< threed_odometry::KinematicKDL > robotKinematics;
@@ -134,15 +131,15 @@ namespace threed_odometry {
         WeightingMatrix WeightMatrix;
 
         /** Delta pose step **/
-        ::base::samples::RigidBodyState deltaPose;
+        ::base::samples::RigidBodyState delta_pose;
 
         /***************************/
         /** Input port variables **/
         /***************************/
 
-        ::base::samples::Joints jointsSamples;
+        ::base::samples::Joints joints_samples;
 
-        ::base::samples::RigidBodyState orientationSamples;
+        ::base::samples::RigidBodyState orientation_samples;
 
 
         /***************************/
@@ -249,14 +246,10 @@ namespace threed_odometry {
 
         /** \brief Store the variables in the Output ports
          */
-        void outputPortSamples(const Eigen::Matrix< double, Eigen::Dynamic, 1  > &jointPositions,
-                                const Eigen::Matrix< double, 6, 1  > &cartesianVelocities,
-                                const Eigen::Matrix< double, Eigen::Dynamic, 1  > &jointVelocities);
+        void outputPortSamples(const Eigen::Matrix< double, Eigen::Dynamic, 1  > &joint_positions,
+                                const Eigen::Matrix< double, 6, 1  > &cartesian_velocities,
+                                const Eigen::Matrix< double, Eigen::Dynamic, 1  > &joint_velocities);
 
-    protected:
-
-        /** Weight matrix for the Asguard Robot **/
-        WeightingMatrix dynamicWeightMatrix (CenterOfMassConfiguration &centerOfMass, base::Orientation &orientation);
 
     public:
 
