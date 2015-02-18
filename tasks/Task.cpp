@@ -106,7 +106,7 @@ void Task::orientation_samplesCallback(const base::Time &ts, const ::base::sampl
     cartesian_velocities.block<3,1> (3,0) = angular_velocity;//!Angular velocities come from gyros
 
     /** Fill the Cartesian velocity covariance **/
-    cartesianVelCov.block<3,3>(3,3) = delta_pose.cov_orientation / (delta_t);// * delta_t);
+    cartesianVelCov.block<3,3>(3,3) = delta_pose.cov_orientation / (delta_t * delta_t);
 
     /** Get the orientation readings  **/
     orientation_samples = orientation_samples_sample;
@@ -386,12 +386,12 @@ void Task::updateOdometry (const double &delta_t)
 
     /** Complete the delta pose  (assuming constant acceleration) **/
     delta_pose.position = delta_t * ((vector_cartesian_velocities[1].block<3,1>(0,0) + vector_cartesian_velocities[0].block<3,1>(0,0))/2.0);
-    delta_pose.cov_position = cartesianVelCov.block<3, 3>(0,0) * delta_t;// * delta_t;
+    delta_pose.cov_position = cartesianVelCov.block<3, 3>(0,0) * (delta_t * delta_t);
 
     /** Take uncertainty on delta orientation from the motion model **/
     if (!_orientation_samples_noise_on.value())
     {
-        delta_pose.cov_orientation = cartesianVelCov.block<3, 3>(3,3) * delta_t;// * delta_t;
+        delta_pose.cov_orientation = cartesianVelCov.block<3, 3>(3,3) * (delta_t * delta_t);
     }
 
     /** Perform the velocities integration to get the pose (Dead Reckoning) **/
