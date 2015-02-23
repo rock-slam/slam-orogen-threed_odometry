@@ -510,6 +510,7 @@ void Task::outputPortSamples(const Eigen::Matrix< double, Eigen::Dynamic, 1  > &
     /***************************************/
 
     /** The Motion Model Estimated pose **/
+    /** NOTE: All the values (including linear and angular velocities) are wrt the local navigation frame (frame where the dead-reckoning process "3D-Odometry" started) **/
     //pose.copyToRigidBodyState(pose_out);
     pose_out.setTransform(pose);
     pose_out.sourceFrame = _odometry_source_frame.value();
@@ -519,12 +520,14 @@ void Task::outputPortSamples(const Eigen::Matrix< double, Eigen::Dynamic, 1  > &
     pose_out.cov_orientation = poseCov.block<3,3>(3,3);
     pose_out.velocity = pose_out.orientation * cartesian_velocities.block<3,1>(0,0);//v_navigation = Tnavigation_body * v_body
     pose_out.cov_velocity = (pose_out.orientation.matrix().transpose() * cartesianVelCov.block<3,3>(0,0).inverse() * pose_out.orientation.matrix()).inverse();
-    pose_out.angular_velocity = cartesian_velocities.block<3,1> (3,0);
-    pose_out.cov_angular_velocity = cartesianVelCov.block<3,3>(3,3);
+    pose_out.angular_velocity = pose_out.orientation * cartesian_velocities.block<3,1> (3,0);
+    Eigen::Affine3d qorientation (pose_out.orientation);
+    pose_out.cov_angular_velocity = qorientation.rotation().transpose() * cartesianVelCov.block<3,3>(3,3) * qorientation.rotation();
     _pose_samples_out.write(pose_out);
 
 
-    /** The Delta pose of this step (only delta transformation) **/
+    /** The Delta pose of this step. Delta pose transformation with instantaneous velocity **/
+    /** NOTE: Linear and Angular velocities are wrt the local robot body frame **/
     delta_pose.time = joints_samples.time;
     delta_pose.sourceFrame = _delta_odometry_source_frame.value();
     delta_pose.targetFrame = _delta_odometry_target_frame.value();
