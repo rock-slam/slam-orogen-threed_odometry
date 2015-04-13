@@ -152,12 +152,6 @@ bool Task::configureHook()
 
         //RTT::log(RTT::Warning)<<"[THREED_ODOMETRY] Dynamic Weight Matrix [ON]"<<RTT::endlog();
 
-    /** Info with regard to the Infinite Impulse Response Filter **/
-    if (iirConfig.iirOn)
-        RTT::log(RTT::Warning)<<"[THREED_ODOMETRY] Infinite Impulse Response Filter [ON]"<<RTT::endlog();
-    else
-        RTT::log(RTT::Warning)<<"[THREED_ODOMETRY] Infinite Impulse Response Filter [OFF]"<<RTT::endlog();
-
     /*********************************************/
     /** Configure the Motion Model of the Robot **/
     /*********************************************/
@@ -199,12 +193,18 @@ bool Task::configureHook()
     /****************/
     /** IIR Filter **/
     /****************/
-    Eigen::Matrix <double, NORDER_BESSEL_FILTER+1, 1> besselBCoeff, besselACoeff;
-    besselBCoeff = iirConfig.feedForwardCoeff;
-    besselACoeff = iirConfig.feedBackCoeff;
+    if (this->iirConfig.iirOn)
+    {
+        RTT::log(RTT::Warning)<<"[THREED_ODOMETRY] Infinite Impulse Response Filter [ON]"<<RTT::endlog();
+        Eigen::Matrix <double, NORDER_BESSEL_FILTER+1, 1> besselBCoeff, besselACoeff;
+        besselBCoeff = iirConfig.feedForwardCoeff;
+        besselACoeff = iirConfig.feedBackCoeff;
 
-    /** Create the Bessel Low-pass filter with the right coefficients **/
-    bessel.reset(new threed_odometry::IIR<NORDER_BESSEL_FILTER, 3> (besselBCoeff, besselACoeff));
+        /** Create the Bessel Low-pass filter with the right coefficients **/
+        bessel.reset(new threed_odometry::IIR<NORDER_BESSEL_FILTER, 3> (besselBCoeff, besselACoeff));
+    }
+    else
+        RTT::log(RTT::Warning)<<"[THREED_ODOMETRY] Infinite Impulse Response Filter [OFF]"<<RTT::endlog();
 
     /*******************************/
     /** Inertial Noise Covariance **/

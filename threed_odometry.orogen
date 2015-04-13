@@ -104,7 +104,7 @@ task_context "Task" do
     ####################################################################
     stream_aligner do
         align_port("joints_samples", 0.08)
-	align_port("orientation_samples", 0.08)
+	    align_port("orientation_samples", 0.08)
         max_latency(1.0)
     end
 
