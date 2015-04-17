@@ -89,8 +89,16 @@ namespace threed_odometry {
         /*** General Internal Storage Variables ***/
         /******************************************/
 
+        /** Number of physical joints according to the model and task properties  **/
         int number_robot_joints;
 
+        /** Flag for Odometry updates. True means the delta Odometry has been calculated **/
+        bool update_odometry_flag;
+
+        /** Accumulated delta_t for orientation. Required when orientation_samples frequency > joints_samples frequency **/
+        double accumulate_orientation_delta_t;
+
+        /** Name of all joints model names **/
         std::vector<std::string> motion_model_joint_names;
 
         /** Joint, Slip and Contact Angle positions NOTE: The order of the storage needs to be coincident if used as input for the motionModel **/

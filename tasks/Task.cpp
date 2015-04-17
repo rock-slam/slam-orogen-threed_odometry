@@ -90,29 +90,40 @@ void Task::orientation_samplesCallback(const base::Time &ts, const ::base::sampl
     double delta_t = static_cast<const double>(_orientation_samples_period.value());
     //double delta_t = orientation_samples_sample.time.toSeconds() - orientation_samples.time.toSeconds();
 
-    /** Invalidate every step in order to set it from the beginning **/
-    delta_pose.invalidate();
+    /** Invalidate every step the updateOdometry method has been executed **/
+    if (this->update_odometry_flag)
+    {
+        delta_pose.invalidate();
+        delta_pose.position.setZero();
+        delta_pose.orientation = Eigen::Quaterniond::Identity();
+        this->accumulate_orientation_delta_t = 0.00;
+        this->update_odometry_flag = false;
+    }
 
-    /** Delta quaternion (rotation k-1 - rotation k) **/
-    delta_pose.orientation = orientation_samples.orientation.inverse() * orientation_samples_sample.orientation; /** (T0_k-1)^-1 * T0_k **/
-    delta_pose.cov_orientation = orientation_samples_sample.cov_orientation - orientation_samples.cov_orientation;
+    /** Accumulate delta_t (in case orientation_samples has higher frequency than joints_samples)**/
+    this->accumulate_orientation_delta_t += delta_t;
+
+    /** Delta quaternion: previous * (rotation k-1 - rotation k) **/
+    delta_pose.orientation = delta_pose.orientation * (orientation_samples.orientation.inverse() * orientation_samples_sample.orientation); /** (T0_k-1)^-1 * T0_k **/
+    delta_pose.cov_orientation = delta_pose.cov_orientation + (orientation_samples_sample.cov_orientation - orientation_samples.cov_orientation); // TO-DO: change to transform with uncertainty whe it is in base/types
 
     /** Angular velocity **/
     Eigen::AngleAxisd deltaAngleaxis(delta_pose.orientation);
-    Eigen::Vector3d angular_velocity = (deltaAngleaxis.angle() * deltaAngleaxis.axis())/delta_t;
+    Eigen::Vector3d angular_velocity = (deltaAngleaxis.angle() * deltaAngleaxis.axis())/this->accumulate_orientation_delta_t;
 
     /** Fill the Cartesian Velocities **/
     cartesian_velocities.block<3,1> (0,0) = Eigen::Matrix<double, 3, 1>::Identity() * base::NaN<double>();
     cartesian_velocities.block<3,1> (3,0) = angular_velocity;//!Angular velocities come from gyros
 
     /** Fill the Cartesian velocity covariance **/
-    cartesianVelCov.block<3,3>(3,3) = delta_pose.cov_orientation / (delta_t * delta_t);
+    cartesianVelCov.block<3,3>(3,3) = delta_pose.cov_orientation / (this->accumulate_orientation_delta_t * this->accumulate_orientation_delta_t);
 
     /** Get the orientation readings  **/
     orientation_samples = orientation_samples_sample;
 
     #ifdef DEBUG_PRINTS
     std::cout<<"[THREED_ODOMETRY INERTIAL_SAMPLES] Received time-stamp:\n"<<orientation_samples.time.toMicroseconds()<<"\n";
+    std::cout<<"[THREED_ODOMETRY INERTIAL_SAMPLES] Accumulated Delta_t:\n"<<this->accumulate_orientation_delta_t<<"\n";
     std::cout<<"[THREED_ODOMETRY INERTIAL_SAMPLES] Cartesian Velocities:\n"<<cartesian_velocities<<"\n";
     #endif
 
@@ -176,9 +187,9 @@ bool Task::configureHook()
                                                         this->slip_joint_names.size(), this->contact_joint_names.size()));
 
     /** Weighting Matrix Initialization. Default is equally distributed among all the contact_points_segments **/
-    WeightMatrix.resize(6*this->contact_point_segments.size(), 6*this->contact_point_segments.size());
-    WeightMatrix.setIdentity();
-    WeightMatrix = (1.0/this->contact_point_segments.size()) * WeightMatrix;
+    this->WeightMatrix.resize(6*this->contact_point_segments.size(), 6*this->contact_point_segments.size());
+    this->WeightMatrix.setIdentity();
+    this->WeightMatrix = (1.0/this->contact_point_segments.size()) * WeightMatrix;
 
     /*************************/
     /** Motion Model Joints **/
@@ -201,7 +212,7 @@ bool Task::configureHook()
         besselACoeff = iirConfig.feedBackCoeff;
 
         /** Create the Bessel Low-pass filter with the right coefficients **/
-        bessel.reset(new threed_odometry::IIR<NORDER_BESSEL_FILTER, 3> (besselBCoeff, besselACoeff));
+        this->bessel.reset(new threed_odometry::IIR<NORDER_BESSEL_FILTER, 3> (besselBCoeff, besselACoeff));
     }
     else
         RTT::log(RTT::Warning)<<"[THREED_ODOMETRY] Infinite Impulse Response Filter [OFF]"<<RTT::endlog();
@@ -211,24 +222,24 @@ bool Task::configureHook()
     /*******************************/
 
     /** Resize the Velocity covariance **/
-    modelVelCov.resize(robotKinematics->model_dof, robotKinematics->model_dof);
+    this->modelVelCov.resize(robotKinematics->model_dof, robotKinematics->model_dof);
 
     /** Angular velocity coming from gyros **/
-    cartesianVelCov.setZero(); modelVelCov.setZero();
+    this->cartesianVelCov.setZero(); modelVelCov.setZero();
 
     /***************************/
     /** Input port variables **/
     /***************************/
-    orientation_samples.position.setZero();
-    orientation_samples.cov_position.setZero();
-    orientation_samples.orientation.setIdentity();
-    orientation_samples.cov_orientation.setZero();
+    this->orientation_samples.position.setZero();
+    this->orientation_samples.cov_position.setZero();
+    this->orientation_samples.orientation.setIdentity();
+    this->orientation_samples.cov_orientation.setZero();
 
     /************************************/
     /** Resize variables for Odometry  **/
     /************************************/
-    joint_positions.resize(robotKinematics->model_dof, 1);
-    joint_velocities.resize(robotKinematics->model_dof, 1);
+    this->joint_positions.resize(robotKinematics->model_dof, 1);
+    this->joint_velocities.resize(robotKinematics->model_dof, 1);
 
     /*************************************/
     /** Reset initial Starting position **/
@@ -263,9 +274,18 @@ bool Task::configureHook()
     poseInit.cov_angular_velocity = Eigen::Matrix3d::Zero();
 
     /** Get the Initial pose and uncertainty **/
-    pose = poseInit.getTransform();
-    poseCov << poseInit.cov_position, Eigen::Matrix3d::Zero(),
+    this->pose = poseInit.getTransform();
+    this->poseCov << poseInit.cov_position, Eigen::Matrix3d::Zero(),
             Eigen::Matrix3d::Zero(), poseInit.cov_orientation;
+
+    /** Delta pose initialization **/
+    this->delta_pose.invalidate();
+    this->delta_pose.position.setZero();
+    this->delta_pose.orientation = Eigen::Quaterniond::Identity();
+
+    this->accumulate_orientation_delta_t = 0.00;
+
+    this->update_odometry_flag = false;
 
     #ifdef DEBUG_PRINTS
     std::cout<< "[THREED_ODOMETRY]\n";
@@ -321,7 +341,6 @@ void Task::updateOdometry (const double &delta_t)
 
     /** Update the Motion Model (Forward Kinematics and to set Contact Points) **/
     this->robotKinematics->fkSolver(vectorPositions, this->contact_point_segments, this->fkRobotTrans, this->fkRobotCov);
-
 
     /** Compute Robot Jacobian matrix **/
     J = this->robotKinematics->jacobianSolver(this->all_joint_names, vectorPositions);
@@ -410,6 +429,9 @@ void Task::updateOdometry (const double &delta_t)
 
     /** Out port the information **/
     this->outputPortSamples (joint_positions, cartesian_velocities, joint_velocities);
+
+    /** Update Odometry flag **/
+    this->update_odometry_flag = true;
 
     return;
 }
