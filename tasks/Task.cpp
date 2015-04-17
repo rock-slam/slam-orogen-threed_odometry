@@ -441,8 +441,8 @@ void Task::joints_samplesUnpack(const ::base::samples::Joints &original_joints,
                                 Eigen::Matrix< double, Eigen::Dynamic, 1  > &joint_positions,
                                 Eigen::Matrix< double, Eigen::Dynamic, 1  > &joint_velocities)
 {
-    assert (joint_positions.size() == original_joints.size());
-    assert (joint_velocities.size() == original_joints.size());
+    assert (static_cast<unsigned int>(joint_positions.size()) == original_joints.size());
+    assert (static_cast<unsigned int>(joint_velocities.size()) == original_joints.size());
     joint_positions.setZero();
     joint_velocities.setZero();
 
