@@ -89,7 +89,9 @@ task_context "Task" do
 
     input_port('weighting_samples', '/base/MatrixXd').
         needs_reliable_connection.
-        doc 'provides timestamped Weight information about the contact points. Weighting Matrix.'+
+        doc 'provides timestamped Weight information about the contact points.'+
+            'It defines which contact point is in contact with the ground using a Weighting Matrix.'+
+            'In case no information is provided, it assumes all the points are equally in contact with the ground'+
             '(support polygon or contact sensory information could be use to provide this matrix).'
 
 
