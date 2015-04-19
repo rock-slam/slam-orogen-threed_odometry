@@ -93,9 +93,10 @@ void Task::orientation_samplesCallback(const base::Time &ts, const ::base::sampl
     /** Invalidate every step the updateOdometry method has been executed **/
     if (this->update_odometry_flag)
     {
-        delta_pose.invalidate();
-        delta_pose.position.setZero();
-        delta_pose.orientation = Eigen::Quaterniond::Identity();
+        this->delta_pose.position.setZero();
+        this->delta_pose.cov_position.setZero();
+        this->delta_pose.orientation = Eigen::Quaterniond::Identity();
+        this->delta_pose.cov_orientation.setZero();
         this->accumulate_orientation_delta_t = 0.00;
         this->update_odometry_flag = false;
     }
@@ -104,11 +105,11 @@ void Task::orientation_samplesCallback(const base::Time &ts, const ::base::sampl
     this->accumulate_orientation_delta_t += delta_t;
 
     /** Delta quaternion: previous * (rotation k-1 - rotation k) **/
-    delta_pose.orientation = delta_pose.orientation * (orientation_samples.orientation.inverse() * orientation_samples_sample.orientation); /** (T0_k-1)^-1 * T0_k **/
-    delta_pose.cov_orientation = delta_pose.cov_orientation + (orientation_samples_sample.cov_orientation - orientation_samples.cov_orientation); // TO-DO: change to transform with uncertainty whe it is in base/types
+    this->delta_pose.orientation = this->delta_pose.orientation * (orientation_samples.orientation.inverse() * orientation_samples_sample.orientation); /** (T0_k-1)^-1 * T0_k **/
+    this->delta_pose.cov_orientation = this->delta_pose.cov_orientation + (orientation_samples_sample.cov_orientation - orientation_samples.cov_orientation); // TO-DO: change to transform with uncertainty whe it is in base/types
 
     /** Angular velocity **/
-    Eigen::AngleAxisd deltaAngleaxis(delta_pose.orientation);
+    Eigen::AngleAxisd deltaAngleaxis(this->delta_pose.orientation);
     Eigen::Vector3d angular_velocity = (deltaAngleaxis.angle() * deltaAngleaxis.axis())/this->accumulate_orientation_delta_t;
 
     /** Fill the Cartesian Velocities **/
@@ -116,7 +117,7 @@ void Task::orientation_samplesCallback(const base::Time &ts, const ::base::sampl
     cartesian_velocities.block<3,1> (3,0) = angular_velocity;//!Angular velocities come from gyros
 
     /** Fill the Cartesian velocity covariance **/
-    cartesianVelCov.block<3,3>(3,3) = delta_pose.cov_orientation / (this->accumulate_orientation_delta_t * this->accumulate_orientation_delta_t);
+    cartesianVelCov.block<3,3>(3,3) = this->delta_pose.cov_orientation / (this->accumulate_orientation_delta_t * this->accumulate_orientation_delta_t);
 
     /** Get the orientation readings  **/
     orientation_samples = orientation_samples_sample;
@@ -280,8 +281,12 @@ bool Task::configureHook()
 
     /** Delta pose initialization **/
     this->delta_pose.invalidate();
+    this->delta_pose.sourceFrame = _delta_odometry_source_frame.value();
+    this->delta_pose.targetFrame = _delta_odometry_target_frame.value();
     this->delta_pose.position.setZero();
+    this->delta_pose.cov_position.setZero();
     this->delta_pose.orientation = Eigen::Quaterniond::Identity();
+    this->delta_pose.cov_orientation.setZero();
 
     this->accumulate_orientation_delta_t = 0.00;
 
@@ -404,25 +409,25 @@ void Task::updateOdometry (const double &delta_t)
     this->vector_cartesian_velocities[0] = cartesian_velocities;
 
     /** Complete the delta pose  (assuming constant acceleration) **/
-    delta_pose.position = delta_t * ((vector_cartesian_velocities[1].block<3,1>(0,0) + vector_cartesian_velocities[0].block<3,1>(0,0))/2.0);
-    delta_pose.cov_position = cartesianVelCov.block<3, 3>(0,0) * (delta_t * delta_t);
+    this->delta_pose.position = delta_t * ((vector_cartesian_velocities[1].block<3,1>(0,0) + vector_cartesian_velocities[0].block<3,1>(0,0))/2.0);
+    this->delta_pose.cov_position = cartesianVelCov.block<3, 3>(0,0) * (delta_t * delta_t);
 
     /** Take uncertainty on delta orientation from the motion model **/
     if (!_orientation_samples_noise_on.value())
     {
-        delta_pose.cov_orientation = cartesianVelCov.block<3, 3>(3,3) * (delta_t * delta_t);
+        this->delta_pose.cov_orientation = cartesianVelCov.block<3, 3>(3,3) * (delta_t * delta_t);
     }
 
     /** Perform the velocities integration to get the pose (Dead Reckoning) **/
     Eigen::Matrix<double, 6, 6> delta_poseCov;
-    delta_poseCov<< delta_pose.cov_position, Eigen::Matrix3d::Zero(),
-            Eigen::Matrix3d::Zero(), delta_pose.cov_orientation;
+    delta_poseCov<< this->delta_pose.cov_position, Eigen::Matrix3d::Zero(),
+            Eigen::Matrix3d::Zero(), this->delta_pose.cov_orientation;
 
     /** Dead Reckon: Propagate Pose **/
-    pose = pose * delta_pose.getTransform();
+    this->pose = this->pose * this->delta_pose.getTransform();
 
     /** Adding method of propagating uncertainty **/
-    poseCov = poseCov + delta_poseCov;
+    this->poseCov = this->poseCov + delta_poseCov;
 
     /** Guarantee SPD covariance **/
     Task::guaranteeSPD(poseCov);
@@ -550,15 +555,13 @@ void Task::outputPortSamples(const Eigen::Matrix< double, Eigen::Dynamic, 1  > &
 
     /** The Delta pose of this step. Delta pose transformation with instantaneous velocity **/
     /** NOTE: Linear and Angular velocities are wrt the local robot body frame **/
-    delta_pose.time = joints_samples.time;
-    delta_pose.sourceFrame = _delta_odometry_source_frame.value();
-    delta_pose.targetFrame = _delta_odometry_target_frame.value();
-    delta_pose.velocity =  cartesian_velocities.block<3,1>(0,0);
-    delta_pose.cov_velocity = cartesianVelCov.block<3,3>(0,0);
-    delta_pose.angular_velocity = cartesian_velocities.block<3,1>(3,0);
-    delta_pose.cov_angular_velocity = cartesianVelCov.block<3,3>(3,3);
+    this->delta_pose.time = joints_samples.time;
+    this->delta_pose.velocity =  cartesian_velocities.block<3,1>(0,0);
+    this->delta_pose.cov_velocity = cartesianVelCov.block<3,3>(0,0);
+    this->delta_pose.angular_velocity = cartesian_velocities.block<3,1>(3,0);
+    this->delta_pose.cov_angular_velocity = cartesianVelCov.block<3,3>(3,3);
 
-    _delta_pose_samples_out.write(delta_pose);
+    _delta_pose_samples_out.write(this->delta_pose);
 
     /** Debug information **/
     if (_output_debug.value())
