@@ -109,7 +109,6 @@ void Task::orientation_samplesCallback(const base::Time &ts, const ::base::sampl
     this->delta_pose.cov_orientation = this->delta_pose.cov_orientation + (orientation_samples_sample.cov_orientation - orientation_samples.cov_orientation); // TO-DO: change to transform with uncertainty whe it is in base/types
 
     /** Angular velocity **/
-    Eigen::AngleAxisd deltaAngleaxis(this->delta_pose.orientation);
     Eigen::Vector3d angular_velocity =  Task::boxminus(this->delta_pose.orientation.w(), this->delta_pose.orientation.vec(), double(2), true);
     angular_velocity = angular_velocity/this->accumulate_orientation_delta_t;
 
