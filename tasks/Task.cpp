@@ -110,7 +110,8 @@ void Task::orientation_samplesCallback(const base::Time &ts, const ::base::sampl
 
     /** Angular velocity **/
     Eigen::AngleAxisd deltaAngleaxis(this->delta_pose.orientation);
-    Eigen::Vector3d angular_velocity = (deltaAngleaxis.angle() * deltaAngleaxis.axis())/this->accumulate_orientation_delta_t;
+    Eigen::Vector3d angular_velocity =  Task::boxminus(this->delta_pose.orientation.w(), this->delta_pose.orientation.vec(), double(2), true);
+    angular_velocity = angular_velocity/this->accumulate_orientation_delta_t;
 
     /** Fill the Cartesian Velocities **/
     cartesian_velocities.block<3,1> (0,0) = Eigen::Matrix<double, 3, 1>::Identity() * base::NaN<double>();

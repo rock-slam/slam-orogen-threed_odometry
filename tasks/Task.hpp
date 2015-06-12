@@ -26,6 +26,11 @@ namespace threed_odometry {
     /** Data types definition **/
     typedef Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> WeightingMatrix;
 
+    template<class scalar> inline scalar tolerance();
+
+    template<> inline float  tolerance<float >() { return 1e-5f; }
+    template<> inline double tolerance<double>() { return 1e-11; }
+
     static const unsigned int NORDER_BESSEL_FILTER = 8; /** Order of the IIR Bessel filter **/
 
     /*! \class Task 
@@ -304,6 +309,39 @@ namespace threed_odometry {
             #endif
 
             return spdA;
+        };
+
+        /**
+         * boxminus operation on a manifold
+         *
+         * @param result @c vectview to the result
+         * @param w      scalar part of input
+         * @param vec    vector part of input
+         * @param scale  scale result by this value
+         * @param plus_minus_periodicity if true values @f$[w, vec]@f$ and @f$[-w, -vec]@f$ give the same result 
+         */
+        Eigen::Vector3d boxminus(const double &w, const Eigen::Vector3d& vec, const double &scale, bool plus_minus_periodicity)
+        {
+            Eigen::Vector3d result;
+
+            double nv = vec.norm();
+            if(nv < threed_odometry::tolerance<double>())
+            {
+                if(!plus_minus_periodicity)
+                {
+                    // find the maximal entry:
+                    int i;
+                    vec.maxCoeff(&i);
+                    result = scale * std::atan2(0, w) * Eigen::Vector3d::Unit(i);
+                    return result;
+                }
+                nv = threed_odometry::tolerance<double>();
+            }
+            double s = scale / nv * (plus_minus_periodicity ? std::atan(nv / w) : std::atan2(nv, w) );
+
+            result = s * vec;
+
+            return result;
         };
 
     public:
