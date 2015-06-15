@@ -355,6 +355,7 @@ void Task::cleanupHook()
 void Task::motionVelocities ()
 {
 
+    bool known_contact_angles = false;
     Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> J;
     std::vector<double> vectorPositions(robotKinematics->model_dof, 0);
 
@@ -378,12 +379,12 @@ void Task::motionVelocities ()
     /** Get joints position and velocity ordered by Motion Model joint names **/
     this->joints_samplesUnpack(joints_samples, motion_model_joint_names, joint_positions, joint_velocities);
 
-    /** Fill the rest of joint_velocities (unknown quantities) **/
-    Eigen::Matrix<double, Eigen::Dynamic, 1> Ident;
-    Ident.resize(this->slip_joint_names.size(), 1);
-    this->joint_velocities.block(this->number_robot_joints, 0, this->slip_joint_names.size(), 1) = Ident * base::NaN<double>();
-    Ident.resize(this->contact_joint_names.size(), 1);
-    this->joint_velocities.block(this->number_robot_joints+this->slip_joint_names.size(), 0, this->contact_joint_names.size(),1) = Ident * base::NaN<double>();
+    /** In case the information about contact angles is not NaN **/
+    if (base::isnotnan(joint_velocities.block(this->number_robot_joints+this->slip_joint_names.size(), 0, this->contact_joint_names.size(),1)) &&
+       base::isnotnan(joint_positions.block(this->number_robot_joints+this->slip_joint_names.size(), 0, this->contact_joint_names.size(),1)))
+    {
+       known_contact_angles = true;
+    }
 
     this->robotKinematics->organizeJacobian(0, motion_model_joint_names, this->all_joint_names, J, organized_J);
 
@@ -407,7 +408,7 @@ void Task::motionVelocities ()
 
     /** Solve the navigation kinematics **/
     this->motionModel->navSolver(joint_positions, joint_velocities, organized_J, cartesian_velocities,
-                                modelVelCov, cartesianVelCov, WeightMatrix);
+                                modelVelCov, cartesianVelCov, WeightMatrix, known_contact_angles);
 
     /** Bessel IIR Low-pass filter of the linear cartesian_velocities from the Motion Model **/
     if (iirConfig.iirOn)
@@ -617,6 +618,7 @@ void Task::outputPortSamples(const Eigen::Matrix< double, Eigen::Dynamic, 1  > &
     std::cout<<"[THREED_ODOMETRY OUTPUT_PORTS]: pose_out.position\n"<<pose_out.position<<"\n";
     std::cout<<"[THREED_ODOMETRY OUTPUT_PORTS]: pose_out.cov_position\n"<<pose_out.cov_position<<"\n";
     std::cout<<"[THREED_ODOMETRY OUTPUT_PORTS]: pose_out.velocity\n"<<pose_out.velocity<<"\n";
+    std::cout<<"[THREED_ODOMETRY OUTPUT_PORTS]: pose_out.cov_velocity\n"<<pose_out.cov_velocity<<"\n";
     Eigen::Vector3d euler;
     euler[2] = pose_out.orientation.toRotationMatrix().eulerAngles(2,1,0)[0];//YAW
     euler[1] = pose_out.orientation.toRotationMatrix().eulerAngles(2,1,0)[1];//PITCH
@@ -624,11 +626,15 @@ void Task::outputPortSamples(const Eigen::Matrix< double, Eigen::Dynamic, 1  > &
     std::cout<<"[THREED_ODOMETRY OUTPUT_PORTS]: Pose Orientation\n";
     std::cout<<"Roll: "<<euler[0]*R2D<<" Pitch: "<<euler[1]*R2D<<" Yaw: "<<euler[2]*R2D<<"\n";
     std::cout<<"[THREED_ODOMETRY OUTPUT_PORTS]: Pose cov_orientation\n"<<pose_out.cov_orientation<<"\n";
+    std::cout<<"[THREED_ODOMETRY OUTPUT_PORTS]: pose_out.angular_velocity\n"<<pose_out.angular_velocity<<"\n";
+    std::cout<<"[THREED_ODOMETRY OUTPUT_PORTS]: pose_out.cov_angular_velocity\n"<<pose_out.cov_angular_velocity<<"\n";
     #endif
 
     #ifdef DEBUG_PRINTS
     std::cout<<"[THREED_ODOMETRY OUTPUT_PORTS]: delta_pose.position\n"<<delta_pose.position<<"\n";
     std::cout<<"[THREED_ODOMETRY OUTPUT_PORTS]: delta_pose.cov_position\n"<<delta_pose.cov_position<<"\n";
+    std::cout<<"[THREED_ODOMETRY OUTPUT_PORTS]: delta_pose.velocity\n"<<delta_pose.velocity<<"\n";
+    std::cout<<"[THREED_ODOMETRY OUTPUT_PORTS]: delta_pose.cov_velocity\n"<<delta_pose.cov_velocity<<"\n";
     Eigen::Vector3d deltaEuler;
     deltaEuler[2] = delta_pose.orientation.toRotationMatrix().eulerAngles(2,1,0)[0];//YAW
     deltaEuler[1] = delta_pose.orientation.toRotationMatrix().eulerAngles(2,1,0)[1];//PITCH
@@ -637,6 +643,8 @@ void Task::outputPortSamples(const Eigen::Matrix< double, Eigen::Dynamic, 1  > &
     std::cout<< "******** Delta Rotation *******"<<"\n";
     std::cout<< "Roll: "<<deltaEuler[0]*R2D<<" Pitch: "<<deltaEuler[1]*R2D<<" Yaw: "<<deltaEuler[2]*R2D<<"\n";
     std::cout<<"[THREED_ODOMETRY OUTPUT_PORTS]: Delta pose cov_orientation\n"<<delta_pose.cov_orientation<<"\n";
+    std::cout<<"[THREED_ODOMETRY OUTPUT_PORTS]: delta_pose.angular_velocity\n"<<delta_pose.angular_velocity<<"\n";
+    std::cout<<"[THREED_ODOMETRY OUTPUT_PORTS]: delta_pose.cov_angular_velocity\n"<<delta_pose.cov_angular_velocity<<"\n";
     std::cout<<"[THREED_ODOMETRY OUTPUT_PORTS]\n ******************** END ******************** \n";
     #endif
 
