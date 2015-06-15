@@ -117,8 +117,12 @@ task_context "Task" do
 	doc 'Estimated robot pose. Position and velocity is computed from statistical Motion Model.'+
             'Orientation from IMU gyros integration.'
 
-    output_port('delta_pose_samples_out', '/base/samples/RigidBodyState').
+    output_port('delta_pose_samples_out', '/base/samples/BodyState').
 	doc 'Delta estimated robot pose (from body_frame k-1). Position and velocity is computed from statistical Motion Model.'+
+            'Orientation from IMU gyros integration.'
+
+    output_port('pose_body_samples_out', '/base/samples/BodyState').
+	doc 'Estimated robot pose. Position and velocity is computed from statistical Motion Model.'+
             'Orientation from IMU gyros integration.'
 
     #************************************

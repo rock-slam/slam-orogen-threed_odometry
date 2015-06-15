@@ -97,7 +97,7 @@ namespace threed_odometry {
         /** Number of physical joints according to the model and task properties  **/
         int number_robot_joints;
 
-        /** Flag for Odometry updates. True means the delta Odometry has been calculated **/
+        /** Flag for Odometry updates. True means the delta step Odometry has been calculated **/
         bool update_odometry_flag;
 
         /** Accumulated delta_t for orientation. Required when orientation_samples frequency > joints_samples frequency **/
@@ -112,10 +112,7 @@ namespace threed_odometry {
         /** Joint, Slip and Contact Angle velocities NOTE: The order of the storage needs to be coincident if used as input for the motionModel **/
         Eigen::Matrix< double, Eigen::Dynamic, 1  > joint_velocities;
 
-        /** Linear and Angular velocities NOTE: The order of the storage needs to be coincident if used as input for the motionModel **/
-        Eigen::Matrix< double, 6, 1  > cartesian_velocities;
-
-        /** Buffer for the storage of cartesian_velocities variables  (for integration assuming constant acceleration) **/
+        /** Buffer for the storage of cartesian velocities variables  (for integration assuming constant acceleration) **/
         std::vector< Eigen::Matrix <double, 6, 1> , Eigen::aligned_allocator < Eigen::Matrix <double, 6, 1> > > vector_cartesian_velocities;
 
         /** Robot Kinematic Model **/
@@ -133,9 +130,6 @@ namespace threed_odometry {
         /** Covariance Joints, Slip and Contact Angle velocities NOTE: The order of the storage needs to be coincident if used as input for the motionModel **/
         Eigen::Matrix< double, Eigen::Dynamic, Eigen::Dynamic > modelVelCov;
 
-        /** Covariance Linear and Angular velocities NOTE: The order of the storage needs to be coincident to be used as input for the motionModel **/
-        Eigen::Matrix< double, 6, 6  > cartesianVelCov;
-
         /** Bessel Low-pass IIR filter for the Motion Model velocities
          * Specification of the Order and Data dimension is required */
         boost::shared_ptr< threed_odometry::IIR<NORDER_BESSEL_FILTER, 3> > bessel;
@@ -144,7 +138,7 @@ namespace threed_odometry {
         WeightingMatrix WeightMatrix;
 
         /** Delta pose step **/
-        ::base::samples::RigidBodyState delta_pose;
+        ::base::samples::BodyState delta_pose;
 
         /***************************/
         /** Input port variables **/
@@ -160,8 +154,7 @@ namespace threed_odometry {
         /***************************/
 
         /** Body Center w.r.t the World Coordinate system (using statistical Motion Model and IMU orientation) */
-        Eigen::Affine3d pose;
-        Eigen::Matrix<double, 6, 6> poseCov;
+        ::base::samples::BodyState body_pose;
 
 
     public:
@@ -260,8 +253,7 @@ namespace threed_odometry {
         /** \brief Store the variables in the Output ports
          */
         void outputPortSamples(const Eigen::Matrix< double, Eigen::Dynamic, 1  > &joint_positions,
-                                const Eigen::Matrix< double, 6, 1  > &cartesian_velocities,
-                                const Eigen::Matrix< double, Eigen::Dynamic, 1  > &joint_velocities);
+                               const Eigen::Matrix< double, Eigen::Dynamic, 1  > &joint_velocities);
 
 
     public:

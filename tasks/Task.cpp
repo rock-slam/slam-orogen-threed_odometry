@@ -21,21 +21,19 @@ Task::Task(std::string const& name)
     /******************************************/
 
     /** Default size for the std_vector for the Cartesian 6DoF velocities variables **/
-    vector_cartesian_velocities = std::vector< Eigen::Matrix <double, 6, 1> , Eigen::aligned_allocator < Eigen::Matrix <double, 6, 1> > > (2);
-    vector_cartesian_velocities[0].setZero(); vector_cartesian_velocities[1].setZero();
+    this->vector_cartesian_velocities = std::vector< Eigen::Matrix <double, 6, 1> , Eigen::aligned_allocator < Eigen::Matrix <double, 6, 1> > > (2);
+    this->vector_cartesian_velocities[0].setZero(); this->vector_cartesian_velocities[1].setZero();
 
     /***************************/
     /** Input port variables  **/
     /***************************/
-    orientation_samples.orientation = Eigen::Quaterniond(base::NaN<double>()*Eigen::Vector4d::Ones());
-    orientation_samples.cov_orientation = base::NaN<double>() * Eigen::Matrix3d::Ones();
+    this->orientation_samples.orientation = Eigen::Quaterniond(base::NaN<double>()*Eigen::Vector4d::Ones());
+    this->orientation_samples.cov_orientation = base::NaN<double>() * Eigen::Matrix3d::Ones();
 
     /***************************/
     /** Output port variables **/
     /***************************/
-    base::samples::RigidBodyState poseInit;
-    poseInit.invalidate();
-    pose = poseInit;
+    this->body_pose.invalidate();
 
 }
 
@@ -93,10 +91,11 @@ void Task::orientation_samplesCallback(const base::Time &ts, const ::base::sampl
     /** Invalidate every step the updateOdometry method has been executed **/
     if (this->update_odometry_flag)
     {
-        this->delta_pose.position.setZero();
-        this->delta_pose.cov_position.setZero();
-        this->delta_pose.orientation = Eigen::Quaterniond::Identity();
-        this->delta_pose.cov_orientation.setZero();
+        /* Pose and Twist to zero **/
+        this->delta_pose.initUnknown();
+        this->delta_pose.cov_pose().setZero();
+        this->delta_pose.cov_velocity().setZero();
+
         this->accumulate_orientation_delta_t = 0.00;
         this->update_odometry_flag = false;
     }
@@ -105,19 +104,23 @@ void Task::orientation_samplesCallback(const base::Time &ts, const ::base::sampl
     this->accumulate_orientation_delta_t += delta_t;
 
     /** Delta quaternion: previous * (rotation k-1 - rotation k) **/
-    this->delta_pose.orientation = this->delta_pose.orientation * (orientation_samples.orientation.inverse() * orientation_samples_sample.orientation); /** (T0_k-1)^-1 * T0_k **/
-    this->delta_pose.cov_orientation = this->delta_pose.cov_orientation + (orientation_samples_sample.cov_orientation - orientation_samples.cov_orientation); // TO-DO: change to transform with uncertainty whe it is in base/types
+    this->delta_pose.orientation() = this->delta_pose.orientation() * (orientation_samples.orientation.inverse() * orientation_samples_sample.orientation); /** previous * ((T0_k-1)^-1 * T0_k) **/
+    Eigen::Matrix3d delta_cov_orientation; delta_cov_orientation = (orientation_samples_sample.cov_orientation - orientation_samples.cov_orientation); /** delta_cov in body frame **/
+    Task::guaranteeSPD(delta_cov_orientation);
+    Eigen::Matrix3d orientation_matrix; orientation_matrix = this->delta_pose.orientation().toRotationMatrix();
+    this->delta_pose.cov_orientation(this->delta_pose.cov_orientation() + (orientation_matrix * delta_cov_orientation * orientation_matrix.transpose()));
 
     /** Angular velocity **/
-    Eigen::Vector3d angular_velocity =  Task::boxminus(this->delta_pose.orientation.w(), this->delta_pose.orientation.vec(), double(2), true);
+    Eigen::Quaterniond delta_orientation(this->delta_pose.orientation());
+    Eigen::Vector3d angular_velocity =  Task::boxminus(delta_orientation.w(), delta_orientation.vec(), double(2), true);
     angular_velocity = angular_velocity/this->accumulate_orientation_delta_t;
 
     /** Fill the Cartesian Velocities **/
-    cartesian_velocities.block<3,1> (0,0) = Eigen::Matrix<double, 3, 1>::Identity() * base::NaN<double>();
-    cartesian_velocities.block<3,1> (3,0) = angular_velocity;//!Angular velocities come from gyros
+    this->delta_pose.velocity.vel = Eigen::Matrix<double, 3, 1>::Identity() * base::NaN<double>();
+    this->delta_pose.velocity.rot = angular_velocity;//!Angular velocities come from orientation derivation
 
     /** Fill the Cartesian velocity covariance **/
-    cartesianVelCov.block<3,3>(3,3) = this->delta_pose.cov_orientation / (this->accumulate_orientation_delta_t * this->accumulate_orientation_delta_t);
+    this->delta_pose.cov_velocity() = this->delta_pose.cov_pose()/(this->accumulate_orientation_delta_t * this->accumulate_orientation_delta_t);
 
     /** Get the orientation readings  **/
     orientation_samples = orientation_samples_sample;
@@ -125,7 +128,7 @@ void Task::orientation_samplesCallback(const base::Time &ts, const ::base::sampl
     #ifdef DEBUG_PRINTS
     std::cout<<"[THREED_ODOMETRY INERTIAL_SAMPLES] Received time-stamp:\n"<<orientation_samples.time.toMicroseconds()<<"\n";
     std::cout<<"[THREED_ODOMETRY INERTIAL_SAMPLES] Accumulated Delta_t:\n"<<this->accumulate_orientation_delta_t<<"\n";
-    std::cout<<"[THREED_ODOMETRY INERTIAL_SAMPLES] Cartesian Velocities:\n"<<cartesian_velocities<<"\n";
+    std::cout<<"[THREED_ODOMETRY INERTIAL_SAMPLES] Cartesian Velocities:\n"<<this->delta_pose.velocity<<"\n";
     #endif
 
     #ifdef DEBUG_PRINTS
@@ -144,8 +147,6 @@ bool Task::configureHook()
 {
     if (! TaskBase::configureHook())
         return false;
-
-    ::base::samples::RigidBodyState poseInit;
 
     /************************/
     /** Read configuration **/
@@ -224,9 +225,7 @@ bool Task::configureHook()
 
     /** Resize the Velocity covariance **/
     this->modelVelCov.resize(robotKinematics->model_dof, robotKinematics->model_dof);
-
-    /** Angular velocity coming from gyros **/
-    this->cartesianVelCov.setZero(); modelVelCov.setZero();
+    this->modelVelCov.setZero();
 
     /***************************/
     /** Input port variables **/
@@ -246,47 +245,15 @@ bool Task::configureHook()
     /** Reset initial Starting position **/
     /*************************************/
 
-    /** Set the initial world to navigation frame transform **/
-    poseInit.invalidate();
-    poseInit.sourceFrame = _odometry_source_frame.get();
-    poseInit.targetFrame = _odometry_target_frame.get();
-
-    /** Staring zero position **/
-    poseInit.position.setZero();
-    poseInit.velocity.setZero();
-
-    /** Assume well known starting position **/
-    poseInit.cov_position = Eigen::Matrix3d::Zero();
-    poseInit.cov_velocity = Eigen::Matrix3d::Zero();
-
-    #ifdef DEBUG_PRINTS
-    std::cout<< "[THREED_ODOMETRY]\n";
-    std::cout<< "******** Initial Position *******"<<"\n";
-    std::cout<< poseInit.position<<"\n";
-    std::cout<< poseInit.cov_position<<"\n";
-    #endif
-
-    /** Orientation with respect to the relative navigation frame**/
-    poseInit.orientation = Eigen::Quaterniond::Identity();
-    poseInit.angular_velocity.setZero();
-
-    /** Assume very well known initial attitude **/
-    poseInit.cov_orientation = Eigen::Matrix3d::Zero();
-    poseInit.cov_angular_velocity = Eigen::Matrix3d::Zero();
-
     /** Get the Initial pose and uncertainty **/
-    this->pose = poseInit.getTransform();
-    this->poseCov << poseInit.cov_position, Eigen::Matrix3d::Zero(),
-            Eigen::Matrix3d::Zero(), poseInit.cov_orientation;
+    this->body_pose.initUnknown();
+    this->body_pose.cov_pose().setZero();
+    this->body_pose.cov_velocity().setZero();
 
     /** Delta pose initialization **/
-    this->delta_pose.invalidate();
-    this->delta_pose.sourceFrame = _delta_odometry_source_frame.value();
-    this->delta_pose.targetFrame = _delta_odometry_target_frame.value();
-    this->delta_pose.position.setZero();
-    this->delta_pose.cov_position.setZero();
-    this->delta_pose.orientation = Eigen::Quaterniond::Identity();
-    this->delta_pose.cov_orientation.setZero();
+    this->delta_pose.initUnknown();
+    this->delta_pose.cov_pose().setZero();
+    this->delta_pose.cov_velocity().setZero();
 
     this->accumulate_orientation_delta_t = 0.00;
 
@@ -294,20 +261,11 @@ bool Task::configureHook()
 
     #ifdef DEBUG_PRINTS
     std::cout<< "[THREED_ODOMETRY]\n";
-    std::cout<< "******** Initial Position *******"<<"\n";
-    std::cout<< pose.translation()<<"\n";
-    std::cout<< "Initial Uncertainty"<<"\n";
-    std::cout<< poseInit.cov_position<<"\n";
-    Eigen::Vector3d euler;
-    euler[2] = poseInit.orientation.toRotationMatrix().eulerAngles(2,1,0)[0];//YAW
-    euler[1] = poseInit.orientation.toRotationMatrix().eulerAngles(2,1,0)[1];//PITCH
-    euler[0] = poseInit.orientation.toRotationMatrix().eulerAngles(2,1,0)[2];//ROLL
-    std::cout<< "******** Initial Attitude *******"<<"\n";
-    std::cout<< "Initial Roll: "<<euler[0]*R2D<<" Init Pitch: "<<euler[1]*R2D<<" Init Yaw: "<<euler[2]*R2D<<"\n";
-    std::cout<< "Initial Uncertainty"<<"\n";
-    std::cout<< poseInit.cov_orientation<<"\n";
-    std::cout<< "Initial Complete Uncertainty"<<"\n";
-    std::cout<< poseCov<<"\n";
+    std::cout<< "******** Initial Pose *******"<<"\n";
+    std::cout<< this->body_pose<<"\n";
+    std::cout<< "******** Initial Delta Pose *******"<<"\n";
+    std::cout<< this->delta_pose<<"\n";
+
     #endif
 
     return true;
@@ -353,7 +311,7 @@ void Task::updateOdometry (const double &delta_t)
 
     /** In case of no noise in properties, set to zero to get the noise from the Motion Model **/
     if (!_orientation_samples_noise_on.value())
-        cartesianVelCov.setZero();
+        this->delta_pose.velocity.invalidateCovariance();
 
     /** Reorganize the Jacobian matrix as required by the motion model **/
     Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> organized_J;
@@ -390,56 +348,73 @@ void Task::updateOdometry (const double &delta_t)
         }
     }
 
-    /** Solve the navigation kinematics **/
-    this->motionModel->navSolver(joint_positions, joint_velocities, organized_J, cartesian_velocities,
-                                modelVelCov, cartesianVelCov, WeightMatrix, known_contact_angles);
+    Eigen::Matrix<double, 6, 1> velocities;
+    Eigen::Matrix<double, 6, 6> cov_velocities;
 
-    /** Bessel IIR Low-pass filter of the linear cartesian_velocities from the Motion Model **/
+    /** 3D odometry library expects velocity vector and covariance in inversion order **/
+    velocities.block<3,1>(0,0) = this->delta_pose.velocity.vel;
+    velocities.block<3,1>(3,0) = this->delta_pose.velocity.rot;
+    cov_velocities.topLeftCorner<3,3>() = this->delta_pose.cov_linear_velocity();
+    cov_velocities.bottomRightCorner<3,3>() = this->delta_pose.cov_angular_velocity();
+
+    /** Solve the navigation kinematics **/
+    this->motionModel->navSolver(joint_positions, joint_velocities, organized_J,
+                                velocities,
+                                modelVelCov,
+                                cov_velocities,
+                                WeightMatrix,
+                                known_contact_angles);
+
+    this->delta_pose.velocity.vel = velocities.block<3,1>(0,0);
+    this->delta_pose.velocity.rot = velocities.block<3,1>(3,0);
+    this->delta_pose.velocity.setLinearVelocityCov(cov_velocities.topLeftCorner<3,3>());
+    this->delta_pose.velocity.setAngularVelocityCov(cov_velocities.bottomRightCorner<3,3>());
+
+    /** Bessel IIR Low-pass filter of the linear cartesian velocities from the Motion Model **/
     if (iirConfig.iirOn)
     {
-        Eigen::Matrix<double, 3, 1> velocity = cartesian_velocities.block<3, 1>(0,0);
-        Eigen::Matrix<double, 3, 3> velocityCov = cartesianVelCov.block<3, 3>(0,0);
-        cartesian_velocities.block<3, 1>(0,0) = this->bessel->perform(velocity, velocityCov, false);
+        Eigen::Matrix<double, 3, 1> velocity = this->delta_pose.velocity.vel;
+        Eigen::Matrix<double, 3, 3> velocity_cov = this->delta_pose.cov_linear_velocity();
+        this->delta_pose.velocity.vel = this->bessel->perform(velocity, velocity_cov, false);
 
         /** Store the filtered velocity uncertainty (Uncertainty propagation is
          * time-correlated by the IIR) **/
-        cartesianVelCov.block<3, 3>(0,0) = velocityCov;
+        this->delta_pose.velocity.setLinearVelocityCov(velocity_cov);
     }
 
     /** Update the Cartesian velocities on the std_vector **/
     this->vector_cartesian_velocities[1] = this->vector_cartesian_velocities[0];
-    this->vector_cartesian_velocities[0] = cartesian_velocities;
+    this->vector_cartesian_velocities[0] = this->delta_pose.velocity.getVelocity();
 
     /** Complete the delta pose  (assuming constant acceleration) **/
-    this->delta_pose.position = delta_t * ((vector_cartesian_velocities[1].block<3,1>(0,0) + vector_cartesian_velocities[0].block<3,1>(0,0))/2.0);
-    this->delta_pose.cov_position = cartesianVelCov.block<3, 3>(0,0) * (delta_t * delta_t);
+    this->delta_pose.position() = delta_t * ((this->vector_cartesian_velocities[1].block<3,1>(3,0) + this->vector_cartesian_velocities[0].block<3,1>(3,0))/2.0);
+    this->delta_pose.cov_position(this->delta_pose.cov_linear_velocity() * (delta_t * delta_t)); //covariance in body_frame
 
     /** Take uncertainty on delta orientation from the motion model **/
     if (!_orientation_samples_noise_on.value())
     {
-        this->delta_pose.cov_orientation = cartesianVelCov.block<3, 3>(3,3) * (delta_t * delta_t);
+        this->delta_pose.cov_orientation(this->delta_pose.cov_angular_velocity() * (delta_t * delta_t));
     }
 
-    /** Perform the velocities integration to get the pose (Dead Reckoning) **/
-    Eigen::Matrix<double, 6, 6> delta_poseCov;
+    /** Guarantee SPD covariance **/
+    Task::guaranteeSPD(this->delta_pose.cov_pose());
+    Task::guaranteeSPD(this->delta_pose.cov_velocity());
 
     /** The uncertainty needs to be transformed to the navigation frame **/
-    this->delta_pose.cov_position  = this->pose.rotation() * this->delta_pose.cov_position * this->pose.rotation().transpose();
-    this->delta_pose.cov_orientation =  this->pose.rotation() * this->delta_pose.cov_orientation * this->pose.rotation().transpose();
-    delta_poseCov<< this->delta_pose.cov_position, Eigen::Matrix3d::Zero(),
-            Eigen::Matrix3d::Zero(), this->delta_pose.cov_orientation;
+    //this->delta_pose.cov_position((this->body_pose.orientation().toRotationMatrix() * this->delta_pose.cov_position().inverse() * this->body_pose.orientation().toRotationMatrix().transpose()).inverse());
+    //this->delta_pose.cov_orientation((this->body_pose.orientation().toRotationMatrix() * this->delta_pose.cov_orientation().inverse() * this->body_pose.orientation().toRotationMatrix().transpose()).inverse());
 
-    /** Dead Reckon: Propagate Pose **/
-    this->pose = this->pose * this->delta_pose.getTransform();
-
-    /** Adding method of propagating uncertainty **/
-    this->poseCov = this->poseCov + delta_poseCov;
+    /** Dead Reckon: Propagate Pose and its associated uncertainty **/
+    this->body_pose = this->body_pose * this->delta_pose;
+    //this->body_pose.velocity = this->delta_pose.velocity;
+    //this->body_pose.cov_velocity() = this->delta_pose.cov_velocity();
 
     /** Guarantee SPD covariance **/
-    Task::guaranteeSPD(poseCov);
+    Task::guaranteeSPD(this->body_pose.cov_pose());
+    Task::guaranteeSPD(this->body_pose.cov_velocity());
 
     /** Out port the information **/
-    this->outputPortSamples (joint_positions, cartesian_velocities, joint_velocities);
+    this->outputPortSamples (joint_positions, joint_velocities);
 
     /** Update Odometry flag **/
     this->update_odometry_flag = true;
@@ -533,7 +508,6 @@ bool Task::joints_samplesMotionModel(std::vector<std::string> &order_names,
 }
 
 void Task::outputPortSamples(const Eigen::Matrix< double, Eigen::Dynamic, 1  > &joint_positions,
-                                const Eigen::Matrix< double, 6, 1  > &cartesian_velocities,
                                 const Eigen::Matrix< double, Eigen::Dynamic, 1  > &joint_velocities)
 {
     base::samples::RigidBodyState pose_out;
@@ -544,35 +518,28 @@ void Task::outputPortSamples(const Eigen::Matrix< double, Eigen::Dynamic, 1  > &
 
     /** The Motion Model Estimated pose **/
     /** NOTE: Position and orientation values are wrt the local navigation frame (frame where the dead-reckoning process "3D-Odometry" started) **/
-    pose_out.setTransform(pose);
+    pose_out.setTransform(this->body_pose.pose.getTransform());
     pose_out.sourceFrame = _odometry_source_frame.value();
     pose_out.targetFrame = _odometry_target_frame.value();
     pose_out.time = joints_samples.time; //!timestamp;
-    pose_out.cov_position = poseCov.block<3,3>(0,0);
-    pose_out.cov_orientation = poseCov.block<3,3>(3,3);
-
-    /** NOTE: Linear and angular velocities are wrt the local robot body frame **/
-    //pose_out.velocity = cartesian_velocities.block<3,1>(0,0);
-    //pose_out.cov_velocity = cartesianVelCov.block<3,3>(0,0);
-    //pose_out.angular_velocity = cartesian_velocities.block<3,1> (3,0);
-    //pose_out.cov_angular_velocity = cartesianVelCov.block<3,3>(3,3);
+    pose_out.cov_position = this->body_pose.cov_position();
+    pose_out.cov_orientation = this->body_pose.cov_orientation();
 
     /** NOTE: Linear and angular velocities are wrt the local navigation frame (frame where the dead-reckoning process "3D-Odometry" started) **/
-    pose_out.velocity = pose_out.orientation * cartesian_velocities.block<3,1>(0,0);//v_navigation = Tnavigation_body * v_body
-    pose_out.cov_velocity = pose_out.orientation.matrix() * cartesianVelCov.block<3,3>(0,0) * pose_out.orientation.matrix().transpose();
-    pose_out.angular_velocity = pose_out.orientation * cartesian_velocities.block<3,1> (3,0);
-    pose_out.cov_angular_velocity = pose_out.orientation.matrix() * cartesianVelCov.block<3,3>(3,3) * pose_out.orientation.matrix().transpose();
+    pose_out.velocity = this->body_pose.linear_velocity();
+    pose_out.cov_velocity = this->body_pose.cov_linear_velocity();
+    pose_out.angular_velocity = this->body_pose.angular_velocity();
+    pose_out.cov_angular_velocity =  this->body_pose.cov_angular_velocity();
+
     _pose_samples_out.write(pose_out);
 
+    /** The Motion Model Estimated pose in body state **/
+    this->body_pose.time = joints_samples.time; //!timestamp;
+    _pose_body_samples_out.write(this->body_pose);
 
     /** The Delta pose of this step. Delta pose transformation with instantaneous velocity **/
     /** NOTE: Linear and Angular velocities are wrt the local robot body frame **/
     this->delta_pose.time = joints_samples.time;
-    this->delta_pose.velocity =  cartesian_velocities.block<3,1>(0,0);
-    this->delta_pose.cov_velocity = cartesianVelCov.block<3,3>(0,0);
-    this->delta_pose.angular_velocity = cartesian_velocities.block<3,1>(3,0);
-    this->delta_pose.cov_angular_velocity = cartesianVelCov.block<3,3>(3,3);
-
     _delta_pose_samples_out.write(this->delta_pose);
 
     /** Debug information **/
@@ -599,6 +566,11 @@ void Task::outputPortSamples(const Eigen::Matrix< double, Eigen::Dynamic, 1  > &
 
 
     #ifdef DEBUG_PRINTS
+    std::cout<<"[THREED_ODOMETRY OUTPUT_PORTS]: BODY POSE\n";
+    std::cout<<"[THREED_ODOMETRY OUTPUT_PORTS]: body_pose\n"<<this->body_pose<<"\n";
+    std::cout<<"[THREED_ODOMETRY OUTPUT_PORTS]: POSE OUT\n";
+    std::cout<<"[THREED_ODOMETRY OUTPUT_PORTS]: pose_out.sourceFrame\n"<<pose_out.sourceFrame<<"\n";
+    std::cout<<"[THREED_ODOMETRY OUTPUT_PORTS]: pose_out.targetFrame\n"<<pose_out.targetFrame<<"\n";
     std::cout<<"[THREED_ODOMETRY OUTPUT_PORTS]: pose_out.position\n"<<pose_out.position<<"\n";
     std::cout<<"[THREED_ODOMETRY OUTPUT_PORTS]: pose_out.cov_position\n"<<pose_out.cov_position<<"\n";
     std::cout<<"[THREED_ODOMETRY OUTPUT_PORTS]: pose_out.velocity\n"<<pose_out.velocity<<"\n";
@@ -608,6 +580,7 @@ void Task::outputPortSamples(const Eigen::Matrix< double, Eigen::Dynamic, 1  > &
     euler[1] = pose_out.orientation.toRotationMatrix().eulerAngles(2,1,0)[1];//PITCH
     euler[0] = pose_out.orientation.toRotationMatrix().eulerAngles(2,1,0)[2];//ROLL
     std::cout<<"[THREED_ODOMETRY OUTPUT_PORTS]: Pose Orientation\n";
+    std::cout<< "******** Pose Rotation *******"<<"\n";
     std::cout<<"Roll: "<<euler[0]*R2D<<" Pitch: "<<euler[1]*R2D<<" Yaw: "<<euler[2]*R2D<<"\n";
     std::cout<<"[THREED_ODOMETRY OUTPUT_PORTS]: Pose cov_orientation\n"<<pose_out.cov_orientation<<"\n";
     std::cout<<"[THREED_ODOMETRY OUTPUT_PORTS]: pose_out.angular_velocity\n"<<pose_out.angular_velocity<<"\n";
@@ -615,20 +588,15 @@ void Task::outputPortSamples(const Eigen::Matrix< double, Eigen::Dynamic, 1  > &
     #endif
 
     #ifdef DEBUG_PRINTS
-    std::cout<<"[THREED_ODOMETRY OUTPUT_PORTS]: delta_pose.position\n"<<delta_pose.position<<"\n";
-    std::cout<<"[THREED_ODOMETRY OUTPUT_PORTS]: delta_pose.cov_position\n"<<delta_pose.cov_position<<"\n";
-    std::cout<<"[THREED_ODOMETRY OUTPUT_PORTS]: delta_pose.velocity\n"<<delta_pose.velocity<<"\n";
-    std::cout<<"[THREED_ODOMETRY OUTPUT_PORTS]: delta_pose.cov_velocity\n"<<delta_pose.cov_velocity<<"\n";
+    std::cout<<"[THREED_ODOMETRY OUTPUT_PORTS]: DELTA POSE OUT\n";
+    std::cout<<"[THREED_ODOMETRY OUTPUT_PORTS]: delta_pose\n"<<this->delta_pose<<"\n";
     Eigen::Vector3d deltaEuler;
-    deltaEuler[2] = delta_pose.orientation.toRotationMatrix().eulerAngles(2,1,0)[0];//YAW
-    deltaEuler[1] = delta_pose.orientation.toRotationMatrix().eulerAngles(2,1,0)[1];//PITCH
-    deltaEuler[0] = delta_pose.orientation.toRotationMatrix().eulerAngles(2,1,0)[2];//ROLL
+    deltaEuler[2] = this->delta_pose.orientation().toRotationMatrix().eulerAngles(2,1,0)[0];//YAW
+    deltaEuler[1] = this->delta_pose.orientation().toRotationMatrix().eulerAngles(2,1,0)[1];//PITCH
+    deltaEuler[0] = this->delta_pose.orientation().toRotationMatrix().eulerAngles(2,1,0)[2];//ROLL
     std::cout<< "[THREED_ODOMETRY OUTPUT_PORTS]: Delta Pose Orientation\n";
     std::cout<< "******** Delta Rotation *******"<<"\n";
     std::cout<< "Roll: "<<deltaEuler[0]*R2D<<" Pitch: "<<deltaEuler[1]*R2D<<" Yaw: "<<deltaEuler[2]*R2D<<"\n";
-    std::cout<<"[THREED_ODOMETRY OUTPUT_PORTS]: Delta pose cov_orientation\n"<<delta_pose.cov_orientation<<"\n";
-    std::cout<<"[THREED_ODOMETRY OUTPUT_PORTS]: delta_pose.angular_velocity\n"<<delta_pose.angular_velocity<<"\n";
-    std::cout<<"[THREED_ODOMETRY OUTPUT_PORTS]: delta_pose.cov_angular_velocity\n"<<delta_pose.cov_angular_velocity<<"\n";
     std::cout<<"[THREED_ODOMETRY OUTPUT_PORTS]\n ******************** END ******************** \n";
     #endif
 
