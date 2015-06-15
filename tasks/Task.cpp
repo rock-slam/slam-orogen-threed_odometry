@@ -372,6 +372,7 @@ void Task::updateOdometry (const double &delta_t)
     robotKinematics->organizeJacobian(0, motion_model_joint_names, this->all_joint_names, J, organized_J);
 
     #ifdef DEBUG_PRINTS
+    std::cout<<"** [UPDATE_ODOMETRY] Contact angle information available: "<<known_contact_angles<<"\n";
     std::cout<<"** [UPDATE_ODOMETRY] JACOBIAN KDL is of size "<<organized_J.rows()<<" x "<<organized_J.cols()<<"\n"<< organized_J<<"\n\n";
     #endif
 
