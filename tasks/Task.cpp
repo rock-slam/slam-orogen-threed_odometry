@@ -422,8 +422,8 @@ void Task::updateOdometry (const double &delta_t)
     Eigen::Matrix<double, 6, 6> delta_poseCov;
 
     /** The uncertainty needs to be transformed to the navigation frame **/
-    this->delta_pose.cov_position  = (this->pose.rotation().transpose() * this->delta_pose.cov_position.inverse() * this->pose.rotation()).inverse();
-    this->delta_pose.cov_orientation =  (this->pose.rotation().transpose() * this->delta_pose.cov_orientation.inverse() * this->pose.rotation()).inverse();
+    this->delta_pose.cov_position  = this->pose.rotation() * this->delta_pose.cov_position * this->pose.rotation().transpose();
+    this->delta_pose.cov_orientation =  this->pose.rotation() * this->delta_pose.cov_orientation * this->pose.rotation().transpose();
     delta_poseCov<< this->delta_pose.cov_position, Eigen::Matrix3d::Zero(),
             Eigen::Matrix3d::Zero(), this->delta_pose.cov_orientation;
 
@@ -557,10 +557,9 @@ void Task::outputPortSamples(const Eigen::Matrix< double, Eigen::Dynamic, 1  > &
 
     /** NOTE: Linear and angular velocities are wrt the local navigation frame (frame where the dead-reckoning process "3D-Odometry" started) **/
     pose_out.velocity = pose_out.orientation * cartesian_velocities.block<3,1>(0,0);//v_navigation = Tnavigation_body * v_body
-    pose_out.cov_velocity = (pose_out.orientation.matrix().transpose() * cartesianVelCov.block<3,3>(0,0).inverse() * pose_out.orientation.matrix()).inverse();
+    pose_out.cov_velocity = pose_out.orientation.matrix() * cartesianVelCov.block<3,3>(0,0) * pose_out.orientation.matrix().transpose();
     pose_out.angular_velocity = pose_out.orientation * cartesian_velocities.block<3,1> (3,0);
-    Eigen::Affine3d qorientation (pose_out.orientation);
-    pose_out.cov_angular_velocity = qorientation.rotation().transpose() * cartesianVelCov.block<3,3>(3,3) * qorientation.rotation();
+    pose_out.cov_angular_velocity = pose_out.orientation.matrix() * cartesianVelCov.block<3,3>(3,3) * pose_out.orientation.matrix().transpose();
     _pose_samples_out.write(pose_out);
 
 
