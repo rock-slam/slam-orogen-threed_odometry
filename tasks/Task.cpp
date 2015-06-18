@@ -77,7 +77,21 @@ void Task::joints_samplesCallback(const base::Time &ts, const ::base::samples::J
     /** Perform the Motion Model and the Dead-reckoning **/
     if (orientation_samples.time.toSeconds() != 0.00)
     {
+        #ifdef DEBUG_PRINTS
+        struct timeval start, end;
+        gettimeofday(&start, NULL);
+        #endif
+
+
         this->updateOdometry(delta_t);
+
+        #ifdef DEBUG_PRINTS
+        gettimeofday(&end, NULL);
+        double execution_delta = ((end.tv_sec  - start.tv_sec) * 1000000u + end.tv_usec - start.tv_usec) / 1.e6;
+        RTT::log(RTT::Warning)<<"[THREED_ODOMETRY] Execution delta: ";
+        RTT::log(RTT::Warning)<<execution_delta<<RTT::endlog();
+        #endif
+
     }
 
 }
@@ -162,8 +176,6 @@ bool Task::configureHook()
     this->number_robot_joints =  this->all_joint_names.size()-this->slip_joint_names.size()-this->contact_joint_names.size();
 
     this->kinematic_model_type = _kinematic_model_type.value();
-
-        //RTT::log(RTT::Warning)<<"[THREED_ODOMETRY] Dynamic Weight Matrix [ON]"<<RTT::endlog();
 
     /*********************************************/
     /** Configure the Motion Model of the Robot **/
