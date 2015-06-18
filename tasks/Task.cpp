@@ -535,7 +535,7 @@ void Task::outputPortSamples(const Eigen::Matrix< double, Eigen::Dynamic, 1  > &
 
     /** The Motion Model Estimated pose in body state **/
     this->body_pose.time = joints_samples.time; //!timestamp;
-    _pose_body_samples_out.write(this->body_pose);
+    _body_pose_samples_out.write(this->body_pose);
 
     /** The Delta pose of this step. Delta pose transformation with instantaneous velocity **/
     /** NOTE: Linear and Angular velocities are wrt the local robot body frame **/
