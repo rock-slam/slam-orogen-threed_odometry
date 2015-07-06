@@ -97,14 +97,13 @@ task_context "Task" do
 
     ####################################################################
     # INFO AND RECOMMENDATIONS:
-    # All the measurements in this task should be calibrated,
-    # compensated and in the robot body_frame.
     # world_frame is the zero absolute, tangential to an imaginary plane.
     # navigation_frame is the zero relative (where threed_odometry starts).
-    # The Odometry tasks assumes zero starting pose at relative
+    # This Odometry tasks assumes zero starting pose at relative
     # navigation_frame.
     ####################################################################
-    stream_aligner do
+    transformer do
+        transform "imu", "body" # imu in body in "Source in target" convention (Tbody_imu in frames convention)
         align_port("joints_samples", 0.08)
 	    align_port("orientation_samples", 0.08)
         max_latency(1.0)

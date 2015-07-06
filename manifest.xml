@@ -18,6 +18,7 @@
   <depend package="base/types" />
   <depend package="base/orogen/types" />
   <depend package="drivers/orogen/aggregator" />
+  <depend package="drivers/orogen/transformer" />
   <depend package="slam/threed_odometry" />
   <tags>stable, localization</tags>
 </package>

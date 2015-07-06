@@ -62,9 +62,9 @@ namespace threed_odometry {
 	friend class TaskBase;
     protected:
 
-        virtual void joints_samplesCallback(const base::Time &ts, const ::base::samples::Joints &joints_samples_sample);
+        virtual void joints_samplesTransformerCallback(const base::Time &ts, const ::base::samples::Joints &joints_samples_sample);
 
-        virtual void orientation_samplesCallback(const base::Time &ts, const ::base::samples::RigidBodyState &orientation_samples_sample);
+        virtual void orientation_samplesTransformerCallback(const base::Time &ts, const ::base::samples::RigidBodyState &orientation_samples_sample);
 
     protected:
 
@@ -96,12 +96,6 @@ namespace threed_odometry {
 
         /** Number of physical joints according to the model and task properties  **/
         int number_robot_joints;
-
-        /** Flag for Odometry updates. True means the delta Odometry has been calculated **/
-        bool update_odometry_flag;
-
-        /** Accumulated delta_t for orientation. Required when orientation_samples frequency > joints_samples frequency **/
-        double accumulate_orientation_delta_t;
 
         /** Name of all joints model names **/
         std::vector<std::string> motion_model_joint_names;
@@ -240,9 +234,14 @@ namespace threed_odometry {
          */
         void cleanupHook();
 
+        /** @brief Computes the velocities using
+         *  the motion model.
+         */
+        void motionVelocities();
+
         /** @brief Performs the odometry update
          */
-        void updateOdometry(const double &delta_t);
+        void deadReckoning(const double &delta_t);
 
         /** @brief
          */
