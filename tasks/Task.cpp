@@ -46,29 +46,29 @@ Task::~Task()
 {
 }
 
-void Task::joints_samplesCallback(const base::Time &ts, const ::base::samples::Joints &joints_samples_sample)
+void Task::joints_samplesTransformerCallback(const base::Time &ts, const ::base::samples::Joints &joints_samples_sample)
 {
     /** Two different manners to get the delta time **/
-    double delta_t = static_cast<const double>(_joints_samples_period.value());
+    //double delta_t = static_cast<const double>(_joints_samples_period.value());
     //double delta_t = joints_samples_sample.time.toSeconds() - joints_samples.time.toSeconds();
 
     /** Get the Joints values  **/
-    joints_samples = joints_samples_sample;
-    joint_positions.setZero();
-    joint_velocities.setZero();
+    this->joints_samples = joints_samples_sample;
+    this->joint_positions.setZero();
+    this->joint_velocities.setZero();
 
     /** Mechanical joints ordered by jointsName **/
-    this->joints_samplesUnpack(joints_samples, this->all_joint_names, joint_positions, joint_velocities);
+    this->joints_samplesUnpack(this->joints_samples, this->all_joint_names, this->joint_positions, this->joint_velocities);
 
     #ifdef DEBUG_PRINTS
-    std::cout<<"[THREED_ODOMETRY JOINT_SAMPLES] Received time-stamp:\n"<<joints_samples.time.toMicroseconds()<<"\n";
-    std::cout<<"[THREED_ODOMETRY JOINT_SAMPLES] Joint Positions:\n"<<joint_positions<<"\n";
-    std::cout<<"[THREED_ODOMETRY JOINT_SAMPLES] Joint Velocities:\n"<<joint_velocities<<"\n";
+    std::cout<<"[THREED_ODOMETRY JOINT_SAMPLES] Received time-stamp:\n"<<this->joints_samples.time.toMicroseconds()<<"\n";
+    std::cout<<"[THREED_ODOMETRY JOINT_SAMPLES] Joint Positions:\n"<<this->joint_positions<<"\n";
+    std::cout<<"[THREED_ODOMETRY JOINT_SAMPLES] Joint Velocities:\n"<<this->joint_velocities<<"\n";
     #endif
 
     #ifdef DEBUG_PRINTS
     /** Check the time difference between joint and orientation samples **/
-    base::Time diffTime = joints_samples.time - orientation_samples.time;
+    base::Time diffTime = this->joints_samples.time - this->orientation_samples.time;
 
     std::cout<<"[THREED_ODOMETRY JOINT_SAMPLES] [ON] ("<<joints_samples.time.toMicroseconds()<<")\n";
     std::cout<<"[THREED_ODOMETRY JOINT_SAMPLES] diffTime:\n"<<diffTime.toSeconds()<<"\n";
@@ -83,7 +83,7 @@ void Task::joints_samplesCallback(const base::Time &ts, const ::base::samples::J
         #endif
 
 
-        this->updateOdometry(delta_t);
+        this->motionVelocities();
 
         #ifdef DEBUG_PRINTS
         gettimeofday(&end, NULL);
@@ -96,52 +96,60 @@ void Task::joints_samplesCallback(const base::Time &ts, const ::base::samples::J
 
 }
 
-void Task::orientation_samplesCallback(const base::Time &ts, const ::base::samples::RigidBodyState &orientation_samples_sample)
+void Task::orientation_samplesTransformerCallback(const base::Time &ts, const ::base::samples::RigidBodyState &orientation_samples_sample)
 {
+    Eigen::Affine3d tf; /** Transformer transformation **/
+    Eigen::Quaternion <double> qtf; /** Rotation part of the transformation in quaternion form **/
+
     /** Two different manners to get the delta time **/
-    double delta_t = static_cast<const double>(_orientation_samples_period.value());
-    //double delta_t = orientation_samples_sample.time.toSeconds() - orientation_samples.time.toSeconds();
+    //double delta_t = static_cast<const double>(_orientation_samples_period.value());
+    double delta_t = orientation_samples_sample.time.toSeconds() - orientation_samples.time.toSeconds();
 
-    /** Invalidate every step the updateOdometry method has been executed **/
-    if (this->update_odometry_flag)
+    /** Get the transformation (transformation) Tbody_imu **/
+    if (!_imu2body.get(ts, tf, false))
     {
-        /* Pose and Twist to zero **/
-        this->delta_pose.initUnknown();
-        this->delta_pose.cov_pose().setZero();
-        this->delta_pose.cov_velocity().setZero();
-
-        this->accumulate_orientation_delta_t = 0.00;
-        this->update_odometry_flag = false;
+        throw std::runtime_error("[THREED_ODOMETRY] Transformation from imu to body is not provided.");
+        return;
     }
 
-    /** Accumulate delta_t (in case orientation_samples has higher frequency than joints_samples)**/
-    this->accumulate_orientation_delta_t += delta_t;
+    qtf = Eigen::Quaternion <double> (tf.rotation());//!Quaternion from Body to imu (transforming samples from imu to body)
 
-    /** Delta quaternion: previous * (rotation k-1 - rotation k) **/
-    this->delta_pose.orientation() = this->delta_pose.orientation() * (orientation_samples.orientation.inverse() * orientation_samples_sample.orientation); /** previous * ((T0_k-1)^-1 * T0_k) **/
-    Eigen::Matrix3d delta_cov_orientation; delta_cov_orientation = (orientation_samples_sample.cov_orientation - orientation_samples.cov_orientation); /** delta_cov in body frame **/
+    /** Transform the orientation world_imu to world_body **/
+    Eigen::Quaterniond orientation_in_body  = orientation_samples_sample.orientation * qtf.inverse(); // Tworld_body = Tworld_imu * (Tbody_imu)^-1
+    Eigen::Matrix3d cov_orientation_in_body = tf.rotation() * orientation_samples_sample.cov_orientation * tf.rotation().transpose(); // Tworld_body = Tworld_imu * (Tbody_imu)^-1
+
+    /* Pose and Twist to zero **/
+    this->delta_pose.initUnknown();
+    this->delta_pose.cov_pose().setZero();
+    this->delta_pose.cov_velocity().setZero();
+
+    /** Delta quaternion: (rotation k-1 - rotation k) **/
+    this->delta_pose.orientation() = this->orientation_samples.orientation.inverse() * orientation_in_body; /** previous * ((T0_k-1)^-1 * T0_k) **/
+    Eigen::Matrix3d delta_cov_orientation; delta_cov_orientation = cov_orientation_in_body - this->orientation_samples.cov_orientation; /** delta_cov in body frame **/
     Task::guaranteeSPD(delta_cov_orientation);
     Eigen::Matrix3d orientation_matrix; orientation_matrix = this->delta_pose.orientation().toRotationMatrix();
-    this->delta_pose.cov_orientation(this->delta_pose.cov_orientation() + (orientation_matrix * delta_cov_orientation * orientation_matrix.transpose()));
+    this->delta_pose.cov_orientation(orientation_matrix * delta_cov_orientation * orientation_matrix.transpose());
 
     /** Angular velocity **/
     Eigen::Quaterniond delta_orientation(this->delta_pose.orientation());
     Eigen::Vector3d angular_velocity =  Task::boxminus(delta_orientation.w(), delta_orientation.vec(), double(2), true);
-    angular_velocity = angular_velocity/this->accumulate_orientation_delta_t;
+    angular_velocity = angular_velocity/delta_t;
 
     /** Fill the Cartesian Velocities **/
     this->delta_pose.velocity.vel = Eigen::Matrix<double, 3, 1>::Identity() * base::NaN<double>();
     this->delta_pose.velocity.rot = angular_velocity;//!Angular velocities come from orientation derivation
 
     /** Fill the Cartesian velocity covariance **/
-    this->delta_pose.cov_velocity() = this->delta_pose.cov_pose()/(this->accumulate_orientation_delta_t * this->accumulate_orientation_delta_t);
+    this->delta_pose.cov_velocity() = this->delta_pose.cov_pose()/(delta_t * delta_t);
 
     /** Get the orientation readings  **/
-    orientation_samples = orientation_samples_sample;
+    this->orientation_samples.time = orientation_samples_sample.time;
+    this->orientation_samples.orientation = orientation_in_body;
+    this->orientation_samples.cov_orientation = cov_orientation_in_body;
 
     #ifdef DEBUG_PRINTS
     std::cout<<"[THREED_ODOMETRY INERTIAL_SAMPLES] Received time-stamp:\n"<<orientation_samples.time.toMicroseconds()<<"\n";
-    std::cout<<"[THREED_ODOMETRY INERTIAL_SAMPLES] Accumulated Delta_t:\n"<<this->accumulate_orientation_delta_t<<"\n";
+    std::cout<<"[THREED_ODOMETRY INERTIAL_SAMPLES] Delta_t:\n"<<delta_t<<"\n";
     std::cout<<"[THREED_ODOMETRY INERTIAL_SAMPLES] Cartesian Velocities:\n"<<this->delta_pose.velocity<<"\n";
     #endif
 
@@ -151,6 +159,15 @@ void Task::orientation_samplesCallback(const base::Time &ts, const ::base::sampl
     std::cout<<"[THREED_ODOMETRY INERTIAL_SAMPLES] diffTime:\n"<<diffTime.toSeconds()<<"\n";
     #endif
 
+    /** Compute Odometry only if there were samples from the joints **/
+    if (this->joints_samples.time.toSeconds() != 0.00)
+    {
+        /** Perform the Dead-Reckoning **/
+        this->deadReckoning(delta_t);
+
+        /** Out port the information **/
+        this->outputPortSamples (joint_positions, joint_velocities);
+    }
 }
 
 /// The following lines are template definitions for the various state machine
@@ -267,10 +284,6 @@ bool Task::configureHook()
     this->delta_pose.cov_pose().setZero();
     this->delta_pose.cov_velocity().setZero();
 
-    this->accumulate_orientation_delta_t = 0.00;
-
-    this->update_odometry_flag = false;
-
     #ifdef DEBUG_PRINTS
     std::cout<< "[THREED_ODOMETRY]\n";
     std::cout<< "******** Initial Pose *******"<<"\n";
@@ -305,7 +318,7 @@ void Task::cleanupHook()
     TaskBase::cleanupHook();
 }
 
-void Task::updateOdometry (const double &delta_t)
+void Task::motionVelocities ()
 {
 
     bool known_contact_angles = false;
@@ -339,11 +352,11 @@ void Task::updateOdometry (const double &delta_t)
        known_contact_angles = true;
     }
 
-    robotKinematics->organizeJacobian(0, motion_model_joint_names, this->all_joint_names, J, organized_J);
+    this->robotKinematics->organizeJacobian(0, motion_model_joint_names, this->all_joint_names, J, organized_J);
 
     #ifdef DEBUG_PRINTS
-    std::cout<<"** [UPDATE_ODOMETRY] Contact angle information available: "<<known_contact_angles<<"\n";
-    std::cout<<"** [UPDATE_ODOMETRY] JACOBIAN KDL is of size "<<organized_J.rows()<<" x "<<organized_J.cols()<<"\n"<< organized_J<<"\n\n";
+    std::cout<<"** [MOTION_VELOCITIES] Contact angle information available: "<<known_contact_angles<<"\n";
+    std::cout<<"** [MOTION_VELOCITIES] JACOBIAN KDL is of size "<<organized_J.rows()<<" x "<<organized_J.cols()<<"\n"<< organized_J<<"\n\n";
     #endif
 
     /** Read new Weighting matrix from the Input port **/
@@ -352,7 +365,7 @@ void Task::updateOdometry (const double &delta_t)
     {
         if (wMatrix.size() == WeightMatrix.size())
         {
-            WeightMatrix = wMatrix;
+            this->WeightMatrix = wMatrix;
         }
         else
         {
@@ -398,6 +411,12 @@ void Task::updateOdometry (const double &delta_t)
     this->vector_cartesian_velocities[1] = this->vector_cartesian_velocities[0];
     this->vector_cartesian_velocities[0] = this->delta_pose.velocity.getVelocity();
 
+    return;
+}
+
+void Task::deadReckoning (const double &delta_t)
+{
+
     /** Complete the delta pose  (assuming constant acceleration) **/
     this->delta_pose.position() = delta_t * ((this->vector_cartesian_velocities[1].block<3,1>(3,0) + this->vector_cartesian_velocities[0].block<3,1>(3,0))/2.0);
     this->delta_pose.cov_position(this->delta_pose.cov_linear_velocity() * (delta_t * delta_t)); //covariance in body_frame
@@ -424,12 +443,6 @@ void Task::updateOdometry (const double &delta_t)
     /** Guarantee SPD covariance **/
     Task::guaranteeSPD(this->body_pose.cov_pose());
     Task::guaranteeSPD(this->body_pose.cov_velocity());
-
-    /** Out port the information **/
-    this->outputPortSamples (joint_positions, joint_velocities);
-
-    /** Update Odometry flag **/
-    this->update_odometry_flag = true;
 
     return;
 }
