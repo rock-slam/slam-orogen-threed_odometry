@@ -106,7 +106,11 @@ void Task::orientation_samplesTransformerCallback(const base::Time &ts, const ::
     double delta_t = orientation_samples_sample.time.toSeconds() - orientation_samples.time.toSeconds();
 
     /** Get the transformation (transformation) Tbody_imu **/
-    if (!_imu2body.get(ts, tf, false))
+    if (_body_frame.value().compare(_imu_frame.value()) == 0)
+    {
+        tf.setIdentity();
+    }
+    else if (!_imu2body.get(ts, tf, false))
     {
         throw std::runtime_error("[THREED_ODOMETRY] Transformation from imu to body is not provided.");
         return;
@@ -123,6 +127,10 @@ void Task::orientation_samplesTransformerCallback(const base::Time &ts, const ::
     this->delta_pose.cov_pose().setZero();
     this->delta_pose.cov_velocity().setZero();
 
+    /** Delta pose orientation initialization **/
+    if (base::isNaN<double>(this->orientation_samples.orientation.w()))
+        this->orientation_samples.orientation =  orientation_in_body;
+
     /** Delta quaternion: (rotation k-1 - rotation k) **/
     this->delta_pose.orientation() = this->orientation_samples.orientation.inverse() * orientation_in_body; /** previous * ((T0_k-1)^-1 * T0_k) **/
     Eigen::Matrix3d delta_cov_orientation; delta_cov_orientation = cov_orientation_in_body - this->orientation_samples.cov_orientation; /** delta_cov in body frame **/
@@ -136,7 +144,6 @@ void Task::orientation_samplesTransformerCallback(const base::Time &ts, const ::
     angular_velocity = angular_velocity/delta_t;
 
     /** Fill the Cartesian Velocities **/
-    this->delta_pose.velocity.vel = Eigen::Matrix<double, 3, 1>::Identity() * base::NaN<double>();
     this->delta_pose.velocity.rot = angular_velocity;//!Angular velocities come from orientation derivation
 
     /** Fill the Cartesian velocity covariance **/
@@ -150,6 +157,7 @@ void Task::orientation_samplesTransformerCallback(const base::Time &ts, const ::
     #ifdef DEBUG_PRINTS
     std::cout<<"[THREED_ODOMETRY INERTIAL_SAMPLES] Received time-stamp:\n"<<orientation_samples.time.toMicroseconds()<<"\n";
     std::cout<<"[THREED_ODOMETRY INERTIAL_SAMPLES] Delta_t:\n"<<delta_t<<"\n";
+    std::cout<<"[THREED_ODOMETRY INERTIAL_SAMPLES] Delta Pose:\n"<<this->delta_pose.pose<<"\n";
     std::cout<<"[THREED_ODOMETRY INERTIAL_SAMPLES] Cartesian Velocities:\n"<<this->delta_pose.velocity<<"\n";
     #endif
 
@@ -261,7 +269,7 @@ bool Task::configureHook()
     /***************************/
     this->orientation_samples.position.setZero();
     this->orientation_samples.cov_position.setZero();
-    this->orientation_samples.orientation.setIdentity();
+    this->orientation_samples.orientation = Eigen::Quaterniond(base::NaN<double>()*Eigen::Vector4d::Ones());
     this->orientation_samples.cov_orientation.setZero();
 
     /************************************/
