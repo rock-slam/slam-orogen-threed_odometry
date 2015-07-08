@@ -95,7 +95,11 @@ void Task::orientation_samplesTransformerCallback(const base::Time &ts,
     double delta_t = orientation_samples_sample.time.toSeconds() - orientation_samples.time.toSeconds();
 
     /** Get the transformation (transformation) Tbody_imu **/
-    if (!_imu2body.get(ts, tf, false))
+    if (_body_frame.value().compare(_imu_frame.value()) == 0)
+    {
+        tf.setIdentity();
+    }
+    else if (!_imu2body.get(ts, tf, false))
     {
         throw std::runtime_error("[THREED_ODOMETRY] Transformation from imu to body is not provided.");
         return;
