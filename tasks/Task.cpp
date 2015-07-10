@@ -568,7 +568,7 @@ void Task::outputPortSamples(const Eigen::Matrix< double, Eigen::Dynamic, 1  > &
     pose_out.setTransform(pose);
     pose_out.sourceFrame = _odometry_source_frame.value();
     pose_out.targetFrame = _odometry_target_frame.value();
-    pose_out.time = joints_samples.time; //!timestamp;
+    pose_out.time = this->orientation_samples.time; //!timestamp;
     pose_out.cov_position = poseCov.block<3,3>(0,0);
     pose_out.cov_orientation = poseCov.block<3,3>(3,3);
 
@@ -588,7 +588,7 @@ void Task::outputPortSamples(const Eigen::Matrix< double, Eigen::Dynamic, 1  > &
 
     /** The Delta pose of this step. Delta pose transformation with instantaneous velocity **/
     /** NOTE: Linear and Angular velocities are wrt the local robot body frame **/
-    this->delta_pose.time = joints_samples.time;
+    this->delta_pose.time = this->orientation_samples.time;
     this->delta_pose.velocity =  cartesian_velocities.block<3,1>(0,0);
     this->delta_pose.cov_velocity = cartesianVelCov.block<3,3>(0,0);
     this->delta_pose.angular_velocity = cartesian_velocities.block<3,1>(3,0);
