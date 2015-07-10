@@ -81,6 +81,8 @@ void Task::joints_samplesTransformerCallback(const base::Time &ts,
     if (this->orientation_samples.time.toSeconds() != 0.00)
     {
         this->motionVelocities();
+
+        this->outputPortContactPoints();
     }
 }
 
@@ -156,7 +158,7 @@ void Task::orientation_samplesTransformerCallback(const base::Time &ts,
         this->deadReckoning(delta_t);
 
         /** Out port the information **/
-        this->outputPortSamples (this->joint_positions, this->cartesian_velocities, this->joint_velocities);
+        this->outputPortPose (this->cartesian_velocities);
 
     }
 }
@@ -553,9 +555,7 @@ bool Task::joints_samplesMotionModel(std::vector<std::string> &order_names,
         return true;
 }
 
-void Task::outputPortSamples(const Eigen::Matrix< double, Eigen::Dynamic, 1  > &joint_positions,
-                                const Eigen::Matrix< double, 6, 1  > &cartesian_velocities,
-                                const Eigen::Matrix< double, Eigen::Dynamic, 1  > &joint_velocities)
+void Task::outputPortPose(const Eigen::Matrix< double, 6, 1  > &cartesian_velocities)
 {
     base::samples::RigidBodyState pose_out;
 
@@ -596,29 +596,6 @@ void Task::outputPortSamples(const Eigen::Matrix< double, Eigen::Dynamic, 1  > &
 
     _delta_pose_samples_out.write(this->delta_pose);
 
-    /** Debug information **/
-    if (_output_debug.value())
-    {
-        /** Forward kinematics information. Set of contact points. **/
-        threed_odometry::RobotContactPointsRbs robotKineRbs;
-
-        robotKineRbs.time = pose_out.time;
-        robotKineRbs.rbsChain.resize(this->fkRobotTrans.size());
-
-        /** For the movement of the points with respect to the body center **/
-        for (register size_t i=0; i<this->fkRobotTrans.size(); ++i)
-        {
-            robotKineRbs.rbsChain[i].invalidate();
-            robotKineRbs.rbsChain[i].time = robotKineRbs.time;
-            robotKineRbs.rbsChain[i].setTransform(this->fkRobotTrans[i]);
-            robotKineRbs.rbsChain[i].cov_position = this->fkRobotCov[i].topLeftCorner<3,3>();
-            robotKineRbs.rbsChain[i].cov_orientation = this->fkRobotCov[i].bottomRightCorner<3,3>();
-        }
-
-        _fkchains_rbs_out.write(robotKineRbs);
-    }
-
-
     #ifdef DEBUG_PRINTS
     std::cout<<"[THREED_ODOMETRY OUTPUT_PORTS]: pose_out.position\n"<<pose_out.position<<"\n";
     std::cout<<"[THREED_ODOMETRY OUTPUT_PORTS]: pose_out.cov_position\n"<<pose_out.cov_position<<"\n";
@@ -654,6 +631,32 @@ void Task::outputPortSamples(const Eigen::Matrix< double, Eigen::Dynamic, 1  > &
     #endif
 
 
+    return;
+}
+
+void Task::outputPortContactPoints()
+{
+    /** Debug information **/
+    if (_output_debug.value())
+    {
+        /** Forward kinematics information. Set of contact points. **/
+        threed_odometry::RobotContactPointsRbs robotKineRbs;
+
+        robotKineRbs.time = this->joints_samples.time;
+        robotKineRbs.rbsChain.resize(this->fkRobotTrans.size());
+
+        /** For the movement of the points with respect to the body center **/
+        for (register size_t i=0; i<this->fkRobotTrans.size(); ++i)
+        {
+            robotKineRbs.rbsChain[i].invalidate();
+            robotKineRbs.rbsChain[i].time = robotKineRbs.time;
+            robotKineRbs.rbsChain[i].setTransform(this->fkRobotTrans[i]);
+            robotKineRbs.rbsChain[i].cov_position = this->fkRobotCov[i].topLeftCorner<3,3>();
+            robotKineRbs.rbsChain[i].cov_orientation = this->fkRobotCov[i].bottomRightCorner<3,3>();
+        }
+
+        _fkchains_rbs_out.write(robotKineRbs);
+    }
     return;
 }
 
