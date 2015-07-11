@@ -251,9 +251,9 @@ namespace threed_odometry {
 
         /** \brief Store the variables in the Output ports
          */
-        void outputPortSamples(const Eigen::Matrix< double, Eigen::Dynamic, 1  > &joint_positions,
-                               const Eigen::Matrix< double, Eigen::Dynamic, 1  > &joint_velocities);
+        void outputPortPose();
 
+        void outputPortContactPoints();
 
     public:
 
