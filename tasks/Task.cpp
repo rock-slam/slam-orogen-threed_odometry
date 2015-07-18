@@ -126,9 +126,10 @@ void Task::orientation_samplesTransformerCallback(const base::Time &ts, const ::
     Eigen::Matrix3d cov_orientation_in_body = tf.rotation() * orientation_samples_sample.cov_orientation * tf.rotation().transpose(); // Tworld_body = Tworld_imu * (Tbody_imu)^-1
 
     /* Pose and Twist to zero **/
-    this->delta_pose.initUnknown();
+    this->delta_pose.position().setZero();
+    this->delta_pose.orientation() = Eigen::Quaterniond::Identity();
     this->delta_pose.cov_pose().setZero();
-    this->delta_pose.cov_velocity().setZero();
+    this->delta_pose.cov_angular_velocity(Eigen::Matrix3d::Zero());// only angular part of the covariance
 
     /** Delta pose orientation initialization **/
     if (base::isNaN<double>(this->orientation_samples.orientation.w()))
@@ -150,7 +151,7 @@ void Task::orientation_samplesTransformerCallback(const base::Time &ts, const ::
     this->delta_pose.velocity.rot = angular_velocity;//!Angular velocities come from orientation derivation
 
     /** Fill the Cartesian velocity covariance **/
-    this->delta_pose.cov_velocity() = this->delta_pose.cov_pose()/(delta_t * delta_t);
+    this->delta_pose.cov_angular_velocity(this->delta_pose.cov_orientation()/(delta_t * delta_t));
 
     /** Get the orientation readings  **/
     this->orientation_samples.time = orientation_samples_sample.time;
@@ -292,8 +293,8 @@ bool Task::configureHook()
 
     /** Delta pose initialization **/
     this->delta_pose.initUnknown();
-    this->delta_pose.cov_pose().setZero();
-    this->delta_pose.cov_velocity().setZero();
+    this->delta_pose.cov_pose() = 1.0e-10 * Eigen::Matrix<double, 6, 6>::Identity();
+    this->delta_pose.cov_velocity() = 1.0e-10 * Eigen::Matrix<double, 6, 6>::Identity();
 
     #ifdef DEBUG_PRINTS
     std::cout<< "[THREED_ODOMETRY]\n";
@@ -612,7 +613,6 @@ void Task::outputPortPose()
     std::cout<< "Roll: "<<deltaEuler[0]*R2D<<" Pitch: "<<deltaEuler[1]*R2D<<" Yaw: "<<deltaEuler[2]*R2D<<"\n";
     std::cout<<"[THREED_ODOMETRY OUTPUT_PORTS]\n ******************** END ******************** \n";
     #endif
-
 
     return;
 }
