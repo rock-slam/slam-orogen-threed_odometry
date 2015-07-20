@@ -34,13 +34,13 @@ task_context "Task" do
 	doc 'Model type to use: ANALYTICAL or NUMERICAL approach.'+
             'You must write :NUMERICAL in case you are using the Kinematics model from threed_odometry library.'
 
-    property('odometry_source_frame', '/std/string').doc 'Text to define the From Frame for the transformer (accumulated pose or Dead-Reckoning)'
+    property('odometry_source_frame', '/std/string').doc 'Text to define the Frame for the transformer (accumulated pose or Dead-Reckoning)'
 
-    property('odometry_target_frame', '/std/string').doc 'Text to define the To Frame for the transformer (accumulated pose or Dead-Reckoning)'
+    property('odometry_target_frame', '/std/string').doc 'Text to define the Frame for the transformer (accumulated pose or Dead-Reckoning)'
 
-    property('delta_odometry_source_frame', '/std/string').doc 'Text to define the From Frame for the transformer (delta pose)'
+    property('delta_odometry_source_frame', '/std/string').doc 'Text to define the Frame for the transformer (delta pose)'
 
-    property('delta_odometry_target_frame', '/std/string').doc 'Text to define the To Frame for the transformer (delta pose)'
+    property('delta_odometry_target_frame', '/std/string').doc 'Text to define the Frame for the transformer (delta pose)'
 
     #******************************
     #*** IIR Filter Properties ****
