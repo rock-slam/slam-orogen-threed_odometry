@@ -65,6 +65,7 @@ namespace threed_odometry {
         virtual void joints_samplesTransformerCallback(const base::Time &ts, const ::base::samples::Joints &joints_samples_sample);
 
         virtual void orientation_samplesTransformerCallback(const base::Time &ts, const ::base::samples::RigidBodyState &orientation_samples_sample);
+    	
 
     protected:
 
@@ -263,6 +264,7 @@ namespace threed_odometry {
         /**@brief Contact point information
          * */
         void outputPortContactPoints();
+		void ContactPointsPortOdometry();
 
     public:
 

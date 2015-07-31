@@ -11,6 +11,8 @@ using_library "threed_odometry" # 3D-Kinematics and motion model solvers
 import_types_from "base" #  IMU/Orientation and Joints samples
 import_types_from "ThreedOdometryTypes.hpp" # Task configuration types
 
+import_types_from "odometry"
+
 # Declare the Three Odometry class
 # The component computes the robot pose based on
 # a complete motion model.
@@ -119,6 +121,11 @@ task_context "Task" do
     output_port('delta_pose_samples_out', '/base/samples/RigidBodyState').
 	doc 'Delta estimated robot pose (from body_frame k-1). Position and velocity is computed from statistical Motion Model.'+
             'Orientation from IMU gyros integration.'
+
+	 output_port('contact_samples', '/odometry/BodyContactState').
+     doc('samples providing information on the contact positions of the robot with the environment')
+
+
 
     #************************************
     #******* Output Debug Ports *********

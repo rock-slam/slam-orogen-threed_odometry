@@ -37,6 +37,7 @@ Task::Task(std::string const& name)
     poseInit.invalidate();
     pose = poseInit;
 
+
 }
 
 Task::Task(std::string const& name, RTT::ExecutionEngine* engine)
@@ -82,7 +83,8 @@ void Task::joints_samplesTransformerCallback(const base::Time &ts,
     {
         this->motionVelocities();
 
-        this->outputPortContactPoints();
+        //this->outputPortContactPoints();
+		this->ContactPointsPortOdometry();
     }
 }
 
@@ -159,6 +161,7 @@ void Task::orientation_samplesTransformerCallback(const base::Time &ts,
 
         /** Out port the information **/
         this->outputPortPose (this->cartesian_velocities);
+		
 
     }
 }
@@ -663,4 +666,45 @@ void Task::outputPortContactPoints()
     return;
 }
 
+void Task::ContactPointsPortOdometry()
+{
+
+	odometry::BodyContactState contact_state ;
+   
+    if (_output_debug.value())
+    {
+        // Forward kinematics information. Set of contact points. 
+        threed_odometry::RobotContactPointsRbs robotKineRbs;
+
+        robotKineRbs.time = this->joints_samples.time;
+        robotKineRbs.rbsChain.resize(this->fkRobotTrans.size());
+
+        // For the movement of the points with respect to the body center 
+        for (register size_t i=0; i<this->fkRobotTrans.size(); ++i)
+        {
+            robotKineRbs.rbsChain[i].invalidate();
+            robotKineRbs.rbsChain[i].time = robotKineRbs.time;
+            robotKineRbs.rbsChain[i].setTransform(this->fkRobotTrans[i]);
+            robotKineRbs.rbsChain[i].cov_position = this->fkRobotCov[i].topLeftCorner<3,3>();
+            robotKineRbs.rbsChain[i].cov_orientation = this->fkRobotCov[i].bottomRightCorner<3,3>();
+        }
+     	for (register size_t i=0; i<robotKineRbs.rbsChain.size(); ++i)
+        {
+			odometry::BodyContactPoint bodyContactPoint;
+			bodyContactPoint.position = robotKineRbs.rbsChain[i].position;
+			if ( this->WeightMatrix(i*6,i*6)>0)
+				bodyContactPoint.contact = 1;
+			else
+				bodyContactPoint.contact = 0;
+			contact_state.points.push_back(bodyContactPoint);
+		
+        }
+		contact_state.time= robotKineRbs.time;
+        _fkchains_rbs_out.write(robotKineRbs);
+  		_contact_samples.write(contact_state );
+ 		
+    }  
+    return;
+
+}
 
