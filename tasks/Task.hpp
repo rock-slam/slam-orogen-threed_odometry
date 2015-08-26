@@ -10,6 +10,7 @@
 
 /** Eigen **/
 #include <Eigen/Core>/** Eigen core library **/
+#include <Eigen/Geometry>/** Eigen geometry **/
 #include <Eigen/SVD> /** Eigen SVD decomposition**/
 #include <Eigen/Dense> /** Algebra and transformation matrices **/
 #include <Eigen/StdVector> /** STL container with Eigen types **/

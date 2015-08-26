@@ -101,13 +101,14 @@ void Task::joints_samplesTransformerCallback(const base::Time &ts, const ::base:
 
 void Task::orientation_samplesTransformerCallback(const base::Time &ts, const ::base::samples::RigidBodyState &orientation_samples_sample)
 {
-    Eigen::Affine3d tf; /** Transformer transformation **/
+    Eigen::Affine3d tf; tf.setIdentity(); /** Transformer transformation **/
     Eigen::Quaternion <double> qtf; /** Rotation part of the transformation in quaternion form **/
 
     /** Two different manners to get the delta time **/
     //double delta_t = static_cast<const double>(_orientation_samples_period.value());
     double delta_t = orientation_samples_sample.time.toSeconds() - orientation_samples.time.toSeconds();
 
+    std::cout<<"TF FROM TRANSFORMER:\n"<<tf.rotation()<<"\n";
     /** Get the transformation (transformation) Tbody_imu **/
     if (_body_frame.value().compare(_imu_frame.value()) == 0)
     {
@@ -118,7 +119,6 @@ void Task::orientation_samplesTransformerCallback(const base::Time &ts, const ::
         throw std::runtime_error("[THREED_ODOMETRY] Transformation from imu to body is not provided.");
         return;
     }
-
     qtf = Eigen::Quaternion <double> (tf.rotation());//!Quaternion from Body to imu (transforming samples from imu to body)
 
     /** Transform the orientation world_imu to world_body **/
