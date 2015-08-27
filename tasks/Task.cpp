@@ -54,7 +54,7 @@ void Task::joints_samplesTransformerCallback(const base::Time &ts,
 {
     /** Two different manners to get the delta time **/
     //double delta_t = static_cast<const double>(_joints_samples_period.value());
-    //double delta_t = joints_samples_sample.time.toSeconds() - joints_samples.time.toSeconds();
+    double delta_t = joints_samples_sample.time.toSeconds() - joints_samples.time.toSeconds();
 
     /** Get the Joints values  **/
     this->joints_samples = joints_samples_sample;
@@ -84,7 +84,7 @@ void Task::joints_samplesTransformerCallback(const base::Time &ts,
         this->motionVelocities();
 
         //this->outputPortContactPoints();
-		this->ContactPointsPortOdometry();
+		this->contactPointsPortOdometry(delta_t);
     }
 }
 
@@ -161,8 +161,6 @@ void Task::orientation_samplesTransformerCallback(const base::Time &ts,
 
         /** Out port the information **/
         this->outputPortPose (this->cartesian_velocities);
-		
-
     }
 }
 
@@ -666,13 +664,36 @@ void Task::outputPortContactPoints()
     return;
 }
 
-void Task::ContactPointsPortOdometry()
+void Task::contactPointsPortOdometry(const double &delta_t)
 {
 
 	odometry::BodyContactState contact_state ;
-   
+
     if (_output_debug.value())
     {
+
+        std::vector<std::string> translation_names = _speed_translation_joint_names.value();
+        Eigen::Matrix< double, Eigen::Dynamic, 1  > translation_velocities;
+        translation_velocities.resize(translation_names.size(), 1);
+        translation_velocities.setZero();
+        register int jointIdx = 0;
+
+        for(std::vector<std::string>::const_iterator it = translation_names.begin(); it != translation_names.end(); it++)
+        {
+            //std::cout<<"NAME: "<<*it<<"\n";
+
+            base::JointState const &state(this->joints_samples[*it]);
+
+            /** Avoid NaN values in velocity **/
+            if (std::isfinite(state.speed))
+                translation_velocities[jointIdx] = state.speed;
+
+            jointIdx++;
+        }
+
+        std::cout<<"Translation velocities\n"<<translation_velocities<<"\n";
+        std::cout<<"Translation delta\n"<<delta_t * translation_velocities<<"\n";
+
         // Forward kinematics information. Set of contact points. 
         threed_odometry::RobotContactPointsRbs robotKineRbs;
 
@@ -688,11 +709,13 @@ void Task::ContactPointsPortOdometry()
             robotKineRbs.rbsChain[i].cov_position = this->fkRobotCov[i].topLeftCorner<3,3>();
             robotKineRbs.rbsChain[i].cov_orientation = this->fkRobotCov[i].bottomRightCorner<3,3>();
         }
+
      	for (register size_t i=0; i<robotKineRbs.rbsChain.size(); ++i)
         {
 			odometry::BodyContactPoint bodyContactPoint;
 			bodyContactPoint.position = robotKineRbs.rbsChain[i].position;
-			if ( this->weight_matrix(i*6,i*6)>0)
+                        bodyContactPoint.position[0] += delta_t * translation_velocities[i];
+			if ( this->WeightMatrix(i*6,i*6)>0)
 				bodyContactPoint.contact = 1;
 			else
 				bodyContactPoint.contact = 0;

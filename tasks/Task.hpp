@@ -264,7 +264,7 @@ namespace threed_odometry {
         /**@brief Contact point information
          * */
         void outputPortContactPoints();
-		void ContactPointsPortOdometry();
+		void contactPointsPortOdometry(const double &delta_t);
 
     public:
 

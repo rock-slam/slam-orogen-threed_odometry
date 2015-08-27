@@ -75,6 +75,8 @@ task_context "Task" do
     property('contact_joint_names', 'std/vector<std/string>').
 	doc 'Joints in the model which are part of the contact angle.'
 
+    property('speed_translation_joint_names', 'std/vector<std/string>').
+	doc 'Joints in the order needed by kdl to solve the forward kinematics.'
 
     #******************************
     #******* Input ports  *********
