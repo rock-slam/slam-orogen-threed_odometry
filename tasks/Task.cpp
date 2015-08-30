@@ -108,7 +108,6 @@ void Task::orientation_samplesTransformerCallback(const base::Time &ts, const ::
     //double delta_t = static_cast<const double>(_orientation_samples_period.value());
     double delta_t = orientation_samples_sample.time.toSeconds() - orientation_samples.time.toSeconds();
 
-    std::cout<<"TF FROM TRANSFORMER:\n"<<tf.rotation()<<"\n";
     /** Get the transformation (transformation) Tbody_imu **/
     if (_body_frame.value().compare(_imu_frame.value()) == 0)
     {
