@@ -388,10 +388,8 @@ void Task::motionVelocities ()
     Eigen::Matrix<double, 6, 6> cov_velocities;
 
     /** 3D odometry library expects velocity vector and covariance in inversion order **/
-    velocities.block<3,1>(0,0) = this->delta_pose.velocity.vel;
-    velocities.block<3,1>(3,0) = this->delta_pose.velocity.rot;
-    cov_velocities.topLeftCorner<3,3>() = this->delta_pose.cov_linear_velocity();
-    cov_velocities.bottomRightCorner<3,3>() = this->delta_pose.cov_angular_velocity();
+    velocities = this->delta_pose.velocity.getVelocity();
+    cov_velocities = this->delta_pose.cov_velocity();
 
     /** Solve the navigation kinematics **/
     this->motionModel->navSolver(joint_positions, joint_velocities, organized_J,
@@ -401,10 +399,8 @@ void Task::motionVelocities ()
                                 WeightMatrix,
                                 known_contact_angles);
 
-    this->delta_pose.velocity.vel = velocities.block<3,1>(0,0);
-    this->delta_pose.velocity.rot = velocities.block<3,1>(3,0);
-    this->delta_pose.velocity.setLinearVelocityCov(cov_velocities.topLeftCorner<3,3>());
-    this->delta_pose.velocity.setAngularVelocityCov(cov_velocities.bottomRightCorner<3,3>());
+    this->delta_pose.velocity.setVelocity(velocities);
+    this->delta_pose.velocity.setCovariance(cov_velocities);
 
     /** Bessel IIR Low-pass filter of the linear cartesian velocities from the Motion Model **/
     if (iirConfig.iirOn)
@@ -429,7 +425,7 @@ void Task::deadReckoning (const double &delta_t)
 {
 
     /** Complete the delta pose  (assuming constant acceleration) **/
-    this->delta_pose.position() = delta_t * ((this->vector_cartesian_velocities[1].block<3,1>(3,0) + this->vector_cartesian_velocities[0].block<3,1>(3,0))/2.0);
+    this->delta_pose.position() = delta_t * ((this->vector_cartesian_velocities[1].block<3,1>(0,0) + this->vector_cartesian_velocities[0].block<3,1>(0,0))/2.0);
     this->delta_pose.cov_position(this->delta_pose.cov_linear_velocity() * (delta_t * delta_t)); //covariance in body_frame
 
     /** Take uncertainty on delta orientation from the motion model **/
