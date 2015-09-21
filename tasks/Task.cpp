@@ -111,7 +111,7 @@ void Task::orientation_samplesTransformerCallback(const base::Time &ts,
 
     /** Transform the orientation world_imu to world_body **/
     Eigen::Quaterniond orientation_in_body  = orientation_samples_sample.orientation * qtf.inverse(); // Tworld_body = Tworld_imu * (Tbody_imu)^-1
-    Eigen::Matrix3d cov_orientation_in_body = tf.rotation() * orientation_samples_sample.cov_orientation * tf.rotation().transpose(); // Tworld_body = Tworld_imu * (Tbody_imu)^-1
+    Eigen::Matrix3d cov_orientation_in_body = tf.inverse().rotation() * orientation_samples_sample.cov_orientation * tf.inverse().rotation().transpose(); // Tworld_body = Tworld_imu * (Tbody_imu)^-1
 
     /** Reset delta pose **/
     this->delta_pose.position.setZero();
@@ -121,14 +121,13 @@ void Task::orientation_samplesTransformerCallback(const base::Time &ts,
 
     /** Delta quaternion: (rotation k-1 - rotation k) **/
     this->delta_pose.orientation = this->orientation_samples.orientation.inverse() * orientation_in_body; /** (T0_k-1)^-1 * T0_k **/
-    this->delta_pose.cov_orientation = cov_orientation_in_body - this->orientation_samples.cov_orientation; // TO-DO: change to transform with uncertainty when it is in base/types
+    this->delta_pose.cov_orientation = cov_orientation_in_body - this->orientation_samples.cov_orientation;
 
     /** Angular velocity **/
     Eigen::Vector3d angular_velocity =  Task::boxminus(this->delta_pose.orientation.w(), this->delta_pose.orientation.vec(), double(2), true);
     angular_velocity = angular_velocity/delta_t;
 
     /** Fill the Cartesian Velocities **/
-    this->cartesian_velocities.block<3,1> (0,0) = Eigen::Matrix<double, 3, 1>::Identity() * base::NaN<double>();
     this->cartesian_velocities.block<3,1> (3,0) = angular_velocity;//!Angular velocities come from gyros
 
     /** Fill the Cartesian velocity covariance **/
@@ -413,6 +412,9 @@ void Task::motionVelocities ()
         }
     }
 
+    /** NaN linear velocities, these are the quatities to compute by the motion model **/
+    this->cartesian_velocities.block<3,1> (0,0) = Eigen::Matrix<double, 3, 1>::Identity() * base::NaN<double>();
+
     /** Solve the navigation kinematics **/
     this->motionModel->navSolver(joint_positions, joint_velocities, organized_J, cartesian_velocities,
                                 modelVelCov, cartesianVelCov, WeightMatrix, known_contact_angles);
@@ -453,10 +455,8 @@ void Task::deadReckoning(const double &delta_t)
     Eigen::Matrix<double, 6, 6> delta_poseCov;
 
     /** The uncertainty needs to be transformed to the navigation frame **/
-    this->delta_pose.cov_position  = this->pose.rotation() * this->delta_pose.cov_position * this->pose.rotation().transpose();
-    this->delta_pose.cov_orientation =  this->pose.rotation() * this->delta_pose.cov_orientation * this->pose.rotation().transpose();
-    delta_poseCov<< this->delta_pose.cov_position, Eigen::Matrix3d::Zero(),
-            Eigen::Matrix3d::Zero(), this->delta_pose.cov_orientation;
+    delta_poseCov<< this->pose.rotation() * this->delta_pose.cov_position * this->pose.rotation().transpose() , Eigen::Matrix3d::Zero(),
+            Eigen::Matrix3d::Zero(), this->pose.rotation() * this->delta_pose.cov_orientation * this->pose.rotation().transpose();
 
     /** Dead Reckon: Propagate Pose **/
     this->pose = this->pose * this->delta_pose.getTransform();
