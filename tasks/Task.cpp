@@ -122,6 +122,7 @@ void Task::orientation_samplesTransformerCallback(const base::Time &ts,
     /** Delta quaternion: (rotation k-1 - rotation k) **/
     this->delta_pose.orientation = this->orientation_samples.orientation.inverse() * orientation_in_body; /** (T0_k-1)^-1 * T0_k **/
     this->delta_pose.cov_orientation = cov_orientation_in_body - this->orientation_samples.cov_orientation;
+    Task::guaranteeSPD< Eigen::Matrix<double, 3, 3> > (this->delta_pose.cov_orientation);
 
     /** Angular velocity **/
     Eigen::Vector3d angular_velocity =  Task::boxminus(this->delta_pose.orientation.w(), this->delta_pose.orientation.vec(), double(2), true);
