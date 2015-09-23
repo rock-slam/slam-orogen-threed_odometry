@@ -95,6 +95,8 @@ namespace threed_odometry {
         /*** General Internal Storage Variables ***/
         /******************************************/
 
+        bool contact_samples_flag, translate_contact_flag;
+
         /** Number of physical joints according to the model and task properties  **/
         int number_robot_joints;
 

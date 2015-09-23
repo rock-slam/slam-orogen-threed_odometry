@@ -316,6 +316,9 @@ bool Task::configureHook()
     this->delta_pose.orientation = Eigen::Quaterniond::Identity();
     this->delta_pose.cov_orientation.setZero();
 
+    this->contact_samples_flag = false;
+    this->translate_contact_flag = false;
+
     #ifdef DEBUG_PRINTS
     std::cout<< "[THREED_ODOMETRY]\n";
     std::cout<< "******** Initial Position *******"<<"\n";
@@ -694,13 +697,13 @@ void Task::contactPointsPortOdometry(const double &delta_t)
         std::cout<<"Translation velocities\n"<<translation_velocities<<"\n";
         std::cout<<"Translation delta\n"<<delta_t * translation_velocities<<"\n";
 
-        // Forward kinematics information. Set of contact points. 
+        // Forward kinematics information. Set of contact points.
         threed_odometry::RobotContactPointsRbs robotKineRbs;
 
         robotKineRbs.time = this->joints_samples.time;
         robotKineRbs.rbsChain.resize(this->fkRobotTrans.size());
 
-        // For the movement of the points with respect to the body center 
+        // For the movement of the points with respect to the body center
         for (register size_t i=0; i<this->fkRobotTrans.size(); ++i)
         {
             robotKineRbs.rbsChain[i].invalidate();
@@ -714,19 +717,28 @@ void Task::contactPointsPortOdometry(const double &delta_t)
         {
 			odometry::BodyContactPoint bodyContactPoint;
 			bodyContactPoint.position = robotKineRbs.rbsChain[i].position;
-                        bodyContactPoint.position[0] += delta_t * translation_velocities[i];
-			if ( this->WeightMatrix(i*6,i*6)>0)
-				bodyContactPoint.contact = 1;
-			else
-				bodyContactPoint.contact = 0;
-			contact_state.points.push_back(bodyContactPoint);
-		
+            bodyContactPoint.contact = 1.0;
+            contact_state.points.push_back(bodyContactPoint);
         }
-		contact_state.time= robotKineRbs.time;
+
+        if (this->translate_contact_flag)
+        {
+            for (register size_t i=0; i<robotKineRbs.rbsChain.size(); ++i)
+            {
+                contact_state.points[i].position[0] += delta_t * translation_velocities[i];
+            }
+
+            this->translate_contact_flag = false;
+        }
+        else
+        {
+            this->translate_contact_flag = true;
+        }
+
+        contact_state.time= robotKineRbs.time;
         _fkchains_rbs_out.write(robotKineRbs);
-  		_contact_samples.write(contact_state );
- 		
-    }  
+        _contact_samples.write(contact_state );
+    }
     return;
 
 }
