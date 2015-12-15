@@ -134,8 +134,8 @@ namespace threed_odometry {
          * Specification of the Order and Data dimension is required */
         boost::shared_ptr< threed_odometry::IIR<NORDER_BESSEL_FILTER, 3> > bessel;
 
-        /** Weighting Matrix for the Motion Model  **/
-        WeightingMatrix WeightMatrix;
+        /** Weighting Matrix used in the Motion Model  **/
+        WeightingMatrix weight_matrix;
 
         /** Delta pose step **/
         ::base::samples::RigidBodyState delta_pose;

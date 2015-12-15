@@ -87,10 +87,10 @@ task_context "Task" do
         needs_reliable_connection.
         doc 'provides timestamped orientation samples.'
 
-    input_port('weighting_samples', '/base/MatrixXd').
+    input_port('weighting_samples', '/base/VectorXd').
         needs_reliable_connection.
         doc 'provides timestamped Weight information about the contact points.'+
-            'It defines which contact point is in contact with the ground using a Weighting Matrix.'+
+            'It defines which contact point is in contact with the ground using a Weighting Matrix Diagonal entry.'+
             'In case no information is provided, it assumes all the points are equally in contact with the ground'+
             '(support polygon or contact sensory information could be use to provide this matrix).'
 

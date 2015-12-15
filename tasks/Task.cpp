@@ -215,9 +215,9 @@ bool Task::configureHook()
                                                         this->slip_joint_names.size(), this->contact_joint_names.size()));
 
     /** Weighting Matrix Initialization. Default is equally distributed among all the contact_points_segments **/
-    this->WeightMatrix.resize(6*this->contact_point_segments.size(), 6*this->contact_point_segments.size());
-    this->WeightMatrix.setIdentity();
-    this->WeightMatrix = (1.0/this->contact_point_segments.size()) * WeightMatrix;
+    this->weight_matrix.resize(6*this->contact_point_segments.size(), 6*this->contact_point_segments.size());
+    this->weight_matrix.setIdentity();
+    this->weight_matrix = (1.0/this->contact_point_segments.size()) * weight_matrix;
 
     /*************************/
     /** Motion Model Joints **/
@@ -399,13 +399,14 @@ void Task::motionVelocities ()
     std::cout<<"** [UPDATE_ODOMETRY] JACOBIAN KDL is of size "<<organized_J.rows()<<" x "<<organized_J.cols()<<"\n"<< organized_J<<"\n\n";
     #endif
 
-    /** Read new Weighting matrix from the Input port **/
-    base::MatrixXd wMatrix;
-    if (_weighting_samples.read(wMatrix, false) == RTT::NewData)
+    /** Read new Weighting matrix diagonal from the Input port **/
+    base::VectorXd w_diagonal;
+    if (_weighting_samples.read(w_diagonal, false) == RTT::NewData)
     {
-        if (wMatrix.size() == WeightMatrix.size())
+        /** The vector size should be equal to the matrix number of columns **/
+        if (w_diagonal.size() == weight_matrix.cols())
         {
-            this->WeightMatrix = wMatrix;
+            this->weight_matrix.diagonal() = w_diagonal;
         }
         else
         {
@@ -418,7 +419,7 @@ void Task::motionVelocities ()
 
     /** Solve the navigation kinematics **/
     this->motionModel->navSolver(joint_positions, joint_velocities, organized_J, cartesian_velocities,
-                                modelVelCov, cartesianVelCov, WeightMatrix, known_contact_angles);
+                                modelVelCov, cartesianVelCov, weight_matrix, known_contact_angles);
 
     /** Bessel IIR Low-pass filter of the linear cartesian_velocities from the Motion Model **/
     if (iirConfig.iirOn)
