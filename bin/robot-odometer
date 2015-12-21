@@ -51,7 +51,8 @@ view3d.show
 vis_gui = Vizkit.default_loader.RobotVisualization
 vis_gui.modelFile = model_file.dup
 vis_gui.setPluginName("Robot")
-view3d.setPluginDataFrame("body", vis_gui )
+#view3d.setPluginDataFrame("body_base", vis_gui )
+view3d.setPluginDataFrame("root_coyote3", vis_gui )
 
 main = Qt::Widget.new
 layout = Qt::VBoxLayout.new(main)
