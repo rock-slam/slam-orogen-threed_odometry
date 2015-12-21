@@ -543,7 +543,8 @@ bool Task::joints_samplesMotionModel(std::vector<std::string> &order_names,
     order_names.insert(order_names.end(), contact_names.begin(), contact_names.end());
 
     #ifdef DEBUG_PRINTS
-    std::cout<<"[JOINTS_SAMPLES_MOTION_MODEL] Order Joints:\n";
+    std::cout<<"[THREED_ODOMETRY JOINTS_SAMPLES] Number of Ordered Joints: "<<order_names.size()<<"\n";
+    std::cout<<"[THREED_ODOMETRY JOINTS_SAMPLES] Name for Ordered Joints:\n";
     for(std::vector<std::string>::const_iterator it = order_names.begin(); it != order_names.end(); it++)
     {
         std::cout<<*it<<"\n";
