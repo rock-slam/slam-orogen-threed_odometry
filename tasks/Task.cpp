@@ -692,7 +692,7 @@ void Task::ContactPointsPortOdometry()
         {
 			odometry::BodyContactPoint bodyContactPoint;
 			bodyContactPoint.position = robotKineRbs.rbsChain[i].position;
-			if ( this->WeightMatrix(i*6,i*6)>0)
+			if ( this->weight_matrix(i*6,i*6)>0)
 				bodyContactPoint.contact = 1;
 			else
 				bodyContactPoint.contact = 0;
