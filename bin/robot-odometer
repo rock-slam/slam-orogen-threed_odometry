@@ -7,6 +7,7 @@ require 'vizkit'
 require 'optparse'
 
 hostname = nil
+number_contact_points = nil
 options = OptionParser.new do |opt|
     opt.banner = <<-EOD
 robot-odometer [options]  </path/to/model/file> <task context name of the odometry component>
@@ -14,6 +15,10 @@ robot-odometer [options]  </path/to/model/file> <task context name of the odomet
     opt.on '--host=HOSTNAME', String, 'the host we should contact to find RTT tasks' do |host|
         hostname = host
     end
+    opt.on '--number_contact_points=#number', String, 'Number of the contact points in robot kinematics' do |number_cp|
+        number_contact_points = number_cp
+    end
+
     opt.on '--help', 'this help message' do
         puts opt
     end
@@ -40,9 +45,16 @@ elsif
     end
 end
 
+if !number_contact_points
+    puts "missing number of contact points"
+    puts options
+    exit 1
+end
+
 Bundles.initialize
 Bundles.transformer.load_conf(Bundles.find_file('config', 'transforms_scripts.rb'))
 puts "Getting task with name #{task_context_name}"
+puts "Robot kinematics expected to have #{number_contact_points} contact points"
 task = Orocos::Async.proxy task_context_name
 
 
@@ -52,7 +64,8 @@ vis_gui = Vizkit.default_loader.RobotVisualization
 vis_gui.modelFile = model_file.dup
 vis_gui.setPluginName("Robot")
 #view3d.setPluginDataFrame("body_base", vis_gui )
-view3d.setPluginDataFrame("root_coyote3", vis_gui )
+#view3d.setPluginDataFrame("root_coyote3", vis_gui )
+view3d.setPluginDataFrame("asguard_body", vis_gui )
 
 main = Qt::Widget.new
 layout = Qt::VBoxLayout.new(main)
@@ -64,53 +77,17 @@ only_positive=true
 no_effort=true
 no_velocity=false
 
-#Contact points FL Wheel (RED)
-c0FL = Vizkit.default_loader.RigidBodyStateVisualization
-c0FL.displayCovariance(true)
-c0FL.setPluginName("FLFoot0")
-c0FL.setColor(Eigen::Vector3.new(0, 0, 0))
-c0FL.resetModel(0.1)
-Vizkit.vizkit3d_widget.setPluginDataFrame("body", c0FL)
-
-#Contact points FR Wheel (GREEN)
-c0FR = Vizkit.default_loader.RigidBodyStateVisualization
-c0FR.setColor(Eigen::Vector3.new(0, 0, 0))
-c0FR.setPluginName("FRFoot0")
-c0FR.resetModel(0.1)
-c0FR.displayCovariance(true)
-Vizkit.vizkit3d_widget.setPluginDataFrame("body", c0FR)
-
-#Contact points ML Wheel (GREEN)
-c0ML = Vizkit.default_loader.RigidBodyStateVisualization
-c0ML.setColor(Eigen::Vector3.new(0, 0, 0))
-c0ML.setPluginName("MLFoot0")
-c0ML.resetModel(0.1)
-c0ML.displayCovariance(true)
-Vizkit.vizkit3d_widget.setPluginDataFrame("body", c0ML)
-
-#Contact points MR Wheel (GREEN)
-c0MR = Vizkit.default_loader.RigidBodyStateVisualization
-c0MR.setColor(Eigen::Vector3.new(0, 0, 0))
-c0MR.setPluginName("MRFoot0")
-c0MR.resetModel(0.1)
-c0MR.displayCovariance(true)
-Vizkit.vizkit3d_widget.setPluginDataFrame("body", c0MR)
-
-#Contact points RL Wheel (BLUE)
-c0RL = Vizkit.default_loader.RigidBodyStateVisualization
-c0RL.setColor(Eigen::Vector3.new(0, 0, 0))
-c0RL.setPluginName("RLFoot0")
-c0RL.resetModel(0.1)
-c0RL.displayCovariance(true)
-Vizkit.vizkit3d_widget.setPluginDataFrame("body", c0RL)
-
-#Contact points RR Wheel (WHITE)
-c0RR = Vizkit.default_loader.RigidBodyStateVisualization
-c0RR.setColor(Eigen::Vector3.new(0, 0, 0))
-c0RR.setPluginName("RRFoot0")
-c0RR.resetModel(0.1)
-c0RR.displayCovariance(true)
-Vizkit.vizkit3d_widget.setPluginDataFrame("body", c0RR)
+#Contact points of the robot
+array_contact_points = []
+for i in 0..number_contact_points.to_i-1
+    rb = Vizkit.default_loader.RigidBodyStateVisualization
+    rb.displayCovariance(true)
+    rb.setPluginName("contact_point_#{i}")
+    rb.setColor(Eigen::Vector3.new(0, 0, 0))
+    rb.resetModel(0.1)
+    Vizkit.vizkit3d_widget.setPluginDataFrame("body", rb)
+    array_contact_points.push(rb)
+end
 
 joint = Types::Base::Samples::Joints.new
 imuSamples = Types::Base::Samples::IMUSensors.new
@@ -148,12 +125,9 @@ task.on_reachable do
     vector_rbs = task.port('fkchains_rbs_out')
     vector_rbs.wait
 
-    Vizkit.display vector_rbs.sub_port([:rbsChain, 0]), :widget => c0FL
-    Vizkit.display vector_rbs.sub_port([:rbsChain, 1]), :widget => c0FR
-    Vizkit.display vector_rbs.sub_port([:rbsChain, 2]), :widget => c0ML
-    Vizkit.display vector_rbs.sub_port([:rbsChain, 3]), :widget => c0MR
-    Vizkit.display vector_rbs.sub_port([:rbsChain, 4]), :widget => c0RL
-    Vizkit.display vector_rbs.sub_port([:rbsChain, 5]), :widget => c0RR
+    for i in 0..number_contact_points.to_i-1
+        Vizkit.display vector_rbs.sub_port([:rbsChain, i]), :widget => array_contact_points[i]
+    end
 end
 
 # disable the GUI until the task is reachable
