@@ -485,19 +485,25 @@ void Task::joints_samplesUnpack(const ::base::samples::Joints &original_joints,
     register int jointIdx = 0;
     for(std::vector<std::string>::const_iterator it = order_names.begin(); it != order_names.end(); it++)
     {
-        base::JointState const &state(original_joints[*it]);
+        try
+        {
+            base::JointState const &state(original_joints[*it]);
 
-        /** Avoid NaN values in position **/
-        if (std::isfinite(state.position))
-            joint_positions[jointIdx] = state.position;
-        else
-            joint_positions[jointIdx] = 0.00;
+            /** Avoid NaN values in position **/
+            if (std::isfinite(state.position))
+                joint_positions[jointIdx] = state.position;
+            else
+                joint_positions[jointIdx] = 0.00;
 
-        /** Avoid NaN values in velocity **/
-        if (std::isfinite(state.speed))
-            joint_velocities[jointIdx] = state.speed;
-        else
-            throw std::runtime_error("[THREED_ODOMETRY JOINT_SAMPLES] Joint speed cannot be NaN.");
+            /** Avoid NaN values in velocity **/
+            if (std::isfinite(state.speed))
+                joint_velocities[jointIdx] = state.speed;
+            else
+                throw std::runtime_error("[THREED_ODOMETRY JOINT_SAMPLES] Joint speed cannot be NaN.");
+        } catch(const std::exception& e){
+            RTT::log(RTT::Error)<<e.what()<<RTT::endlog();
+            throw std::runtime_error("[THREED_ODOMETRY JOINT_SAMPLES] Joint name not found");
+        }
 
         jointIdx++;
     }
