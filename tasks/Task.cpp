@@ -92,10 +92,20 @@ void Task::orientation_samplesTransformerCallback(const base::Time &ts,
     Eigen::Affine3d tf; /** Transformer transformation **/
     Eigen::Quaternion <double> qtf; /** Rotation part of the transformation in quaternion form **/
 
-    /** Two different manners to get the delta time **/
-    //double delta_t = static_cast<const double>(_orientation_samples_period.value());
-    double delta_t = orientation_samples_sample.time.toSeconds() - orientation_samples.time.toSeconds();
+    /** Compute Odometry only if there were samples from the joints **/
+    if (this->joints_samples.time.toSeconds() == 0.00)
+    {
+        std::cout << "[THREED_ODOMETRY] No valid joint samples. Skipping orientation handling" << std::endl;
+        return;
+    }
 
+    /** Two different manners to get the delta time **/
+    double delta_t = static_cast<const double>(_orientation_samples_period.value());
+    if (this->orientation_samples.time.toSeconds() != 0.00)
+    {
+        delta_t = orientation_samples_sample.time.toSeconds() - orientation_samples.time.toSeconds();
+    }
+  
     /** Get the transformation (transformation) Tbody_imu **/
     if (_body_frame.value().compare(_imu_frame.value()) == 0)
     {
@@ -151,16 +161,12 @@ void Task::orientation_samplesTransformerCallback(const base::Time &ts,
     std::cout<<"[THREED_ODOMETRY INERTIAL_SAMPLES] diffTime:\n"<<diffTime.toSeconds()<<"\n";
     #endif
 
-    /** Compute Odometry only if there were samples from the joints **/
-    if (this->joints_samples.time.toSeconds() != 0.00)
-    {
-        /** Perform the Dead-Reckoning **/
-        this->deadReckoning(delta_t);
+    /** Perform the Dead-Reckoning **/
+    this->deadReckoning(delta_t);
 
-        /** Out port the information **/
-        this->outputPortPose (this->cartesian_velocities);
+    /** Out port the information **/
+    this->outputPortPose (this->cartesian_velocities);
 
-    }
 }
 
 /// The following lines are template definitions for the various state machine
